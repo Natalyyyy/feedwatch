@@ -50,7 +50,7 @@ def test_run_fetch_missing_apify_token_raises_config_error(monkeypatch, con):
     # поэтому без подмены load_env тест читал бы реальный .env с диска и мог
     # улететь в живой запрос к Apify. Глушим load_env, чтобы тест был герметичным.
     monkeypatch.setattr(fetch.common, "load_env", lambda *a, **k: {})
-    cfg = dict(common.DEFAULTS, accounts=["acc"], source="apify")
+    cfg = dict(common.DEFAULTS, instagram={"source": "apify", "accounts": ["acc"]})
     with pytest.raises(fetch.ConfigError) as excinfo:
         fetch.run_fetch(12, cfg=cfg, env={}, con=con)
     assert "APIFY_TOKEN" in str(excinfo.value)
@@ -60,7 +60,7 @@ def test_run_fetch_missing_graph_env_raises_config_error(monkeypatch, con):
     # См. комментарий выше: пустой env={} — falsy, run_fetch иначе подхватил бы
     # реальный .env с диска и обратился бы к живому Meta Graph API.
     monkeypatch.setattr(fetch.common, "load_env", lambda *a, **k: {})
-    cfg = dict(common.DEFAULTS, accounts=["acc"], source="metagraph")
+    cfg = dict(common.DEFAULTS, instagram={"source": "metagraph", "accounts": ["acc"]})
     with pytest.raises(fetch.ConfigError) as excinfo:
         fetch.run_fetch(12, cfg=cfg, env={}, con=con)
     msg = str(excinfo.value)
@@ -76,8 +76,36 @@ def test_run_fetch_persists_and_sets_status(monkeypatch, con, tmp_path):
                             "likesCount": 10, "commentsCount": 1,
                             "url": "https://www.instagram.com/p/C1/"})],
                          {"ghost": "нет данных"}))
-    cfg = dict(common.DEFAULTS, accounts=["acc", "ghost"], source="apify")
+    cfg = dict(common.DEFAULTS, instagram={"source": "apify", "accounts": ["acc", "ghost"]})
     records, errors = fetch.run_fetch(12, cfg=cfg, env={"APIFY_TOKEN": "t"}, con=con)
     assert len(common.latest_metrics(con, "acc")) == 1
     row = con.execute("SELECT last_error FROM account_status WHERE account='ghost'").fetchone()
     assert row["last_error"]
+    assert errors == {("instagram", "ghost"): "нет данных"}
+
+
+def test_run_fetch_telegram_web(monkeypatch, con):
+    monkeypatch.setattr(fetch.fetch_tg, "fetch_web",
+                        lambda channels, limit, session=None: (
+                            [{"post_id": "tg:ch:1", "account": "ch", "platform": "telegram",
+                              "caption": "x", "posted_at": common.now_utc().isoformat(),
+                              "likes": 3, "comments": None, "views": 50,
+                              "permalink": "https://t.me/ch/1"}],
+                            {}, {"ch": 1000}))
+    cfg = dict(common.DEFAULTS, telegram={"source": "web", "channels": ["ch"]})
+    records, errors = fetch.run_fetch(5, cfg=cfg, env={}, con=con)
+    assert len(records) == 1 and errors == {}
+    row = con.execute("SELECT subscribers FROM account_status "
+                      "WHERE platform='telegram' AND account='ch'").fetchone()
+    assert row["subscribers"] == 1000
+
+
+def test_run_fetch_tgstat_requires_token(con):
+    cfg = dict(common.DEFAULTS, telegram={"source": "tgstat", "channels": ["ch"]})
+    with pytest.raises(fetch.ConfigError):
+        fetch.run_fetch(5, cfg=cfg, env={}, con=con)
+
+
+def test_run_fetch_no_platforms(con):
+    with pytest.raises(fetch.ConfigError):
+        fetch.run_fetch(5, cfg=dict(common.DEFAULTS), env={}, con=con)

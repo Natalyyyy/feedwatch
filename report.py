@@ -92,7 +92,7 @@ def main():
     if not args.no_fetch:
         limit = cfg["fetch_limit_pulse"] if args.mode == "pulse" else cfg["fetch_limit_weekly"]
         try:
-            fetch.run_fetch(limit, cfg=cfg, env=env, con=con)
+            fetch.run_fetch(limit, cfg=cfg, env=env, con=con, subscribers=(args.mode == "weekly"))
         except fetch.TokenExpiredError:
             if args.send and env.get("TELEGRAM_BOT_TOKEN"):
                 telegram.send(TOKEN_EXPIRED_MSG, env["TELEGRAM_BOT_TOKEN"],

@@ -5,6 +5,7 @@ import sys
 import requests
 
 import common
+import fetch_tg
 
 APIFY_URL = ("https://api.apify.com/v2/acts/apify~instagram-scraper/"
              "run-sync-get-dataset-items")
@@ -106,23 +107,49 @@ def fetch_graph(accounts, limit, ig_id, token):
     return records, errors
 
 
-def run_fetch(limit, cfg=None, env=None, con=None):
+def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
     cfg = cfg or common.load_config()
     env = env or common.load_env()
     con = con or common.connect()
-    accounts = cfg["accounts"]
-    if cfg["source"] == "apify":
-        _require_env(env, ["APIFY_TOKEN"])
-        records, errors = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
-    else:
-        _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
-        records, errors = fetch_graph(accounts, limit,
-                                      env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
-    common.save_posts(con, records)
-    for a in accounts:
-        a = a.lower()
-        common.set_account_status(con, a, error=errors.get(a))
-    return records, errors
+    ig = cfg.get("instagram") or {}
+    tg = cfg.get("telegram") or {}
+    if not ig.get("accounts") and not tg.get("channels"):
+        raise ConfigError("В config.json не настроена ни одна платформа — "
+                          "заполни секцию instagram и/или telegram "
+                          "по образцу config.example.json")
+    records, errors = [], {}
+    if ig.get("accounts"):
+        accounts = ig["accounts"]
+        if ig.get("source", "apify") == "apify":
+            _require_env(env, ["APIFY_TOKEN"])
+            recs, errs = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
+        else:
+            _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
+            recs, errs = fetch_graph(accounts, limit,
+                                     env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
+        records += recs
+        common.save_posts(con, recs)
+        for a in accounts:
+            a = a.lower()
+            errors[("instagram", a)] = errs.get(a)
+            common.set_account_status(con, a, error=errs.get(a))
+    if tg.get("channels"):
+        channels = tg["channels"]
+        if tg.get("source", "web") == "web":
+            recs, errs, subs = fetch_tg.fetch_web(channels, limit)
+        else:
+            _require_env(env, ["TGSTAT_TOKEN"])
+            recs, errs, subs = fetch_tg.fetch_tgstat(channels, limit,
+                                                     env["TGSTAT_TOKEN"],
+                                                     subscribers=subscribers)
+        records += recs
+        common.save_posts(con, recs)
+        for c in channels:
+            c = c.lower()
+            errors[("telegram", c)] = errs.get(c)
+            common.set_account_status(con, c, error=errs.get(c),
+                                      platform="telegram", subscribers=subs.get(c))
+    return records, {k: v for k, v in errors.items() if v}
 
 
 def main():
@@ -132,8 +159,8 @@ def main():
     args = ap.parse_args()
     records, errors = run_fetch(args.limit)
     print("Сохранено постов: {}".format(len(records)))
-    for a, e in errors.items():
-        print("⚠️ @{}: {}".format(a, e), file=sys.stderr)
+    for (platform, a), e in errors.items():
+        print("⚠️ [{}] @{}: {}".format(platform, a, e), file=sys.stderr)
 
 
 if __name__ == "__main__":
