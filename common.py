@@ -11,8 +11,8 @@ CONFIG_PATH = ROOT / "config.json"
 ENV_PATH = ROOT / ".env"
 
 DEFAULTS = {
-    "source": "apify",
-    "accounts": [],
+    "instagram": None,
+    "telegram": None,
     "pulse_multiplier": 2.0,
     "median_window_days": 30,
     "median_min_posts": 12,
@@ -42,12 +42,36 @@ def load_env(path=None):
     return env
 
 
+def normalize_config(cfg):
+    """Плоский legacy-формат (source/accounts в корне) → секция instagram.
+
+    Корневые legacy-ключи не удаляем — их никто больше не читает."""
+    if not cfg.get("instagram") and (cfg.get("accounts") or cfg.get("source")):
+        cfg["instagram"] = {"source": cfg.get("source") or "apify",
+                            "accounts": cfg.get("accounts") or []}
+    cfg.setdefault("instagram", None)
+    cfg.setdefault("telegram", None)
+    return cfg
+
+
 def load_config(path=None):
     path = Path(path or CONFIG_PATH)
     cfg = dict(DEFAULTS)
     if path.exists():
         cfg.update(json.loads(path.read_text(encoding="utf-8")))
-    return cfg
+    return normalize_config(cfg)
+
+
+def active_accounts(cfg):
+    """[(platform, account), ...] по конфигу, аккаунты в lower."""
+    out = []
+    ig = cfg.get("instagram") or {}
+    for a in ig.get("accounts", []):
+        out.append(("instagram", a.lower()))
+    tg = cfg.get("telegram") or {}
+    for c in tg.get("channels", []):
+        out.append(("telegram", c.lower()))
+    return out
 
 
 def now_utc():

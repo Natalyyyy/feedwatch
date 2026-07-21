@@ -22,3 +22,33 @@ def test_load_config_merges_defaults(tmp_path):
     assert cfg["accounts"] == ["someblog"]
     assert cfg["pulse_multiplier"] == 3
     assert cfg["median_window_days"] == 30  # дефолт
+
+
+def test_load_config_legacy_flat_becomes_instagram_section(tmp_path):
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text('{"accounts": ["someblog"], "source": "apify"}', encoding="utf-8")
+    cfg = common.load_config(cfg_file)
+    assert cfg["instagram"] == {"source": "apify", "accounts": ["someblog"]}
+    assert cfg["telegram"] is None
+
+
+def test_load_config_new_format_sections(tmp_path):
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(
+        '{"instagram": {"source": "apify", "accounts": ["a"]},'
+        ' "telegram": {"source": "web", "channels": ["ch"]}}', encoding="utf-8")
+    cfg = common.load_config(cfg_file)
+    assert cfg["instagram"]["accounts"] == ["a"]
+    assert cfg["telegram"]["channels"] == ["ch"]
+
+
+def test_active_accounts_pairs_and_lowercase():
+    cfg = dict(common.DEFAULTS,
+               instagram={"source": "apify", "accounts": ["NatGeo"]},
+               telegram={"source": "web", "channels": ["SoloKumi"]})
+    assert common.active_accounts(cfg) == [
+        ("instagram", "natgeo"), ("telegram", "solokumi")]
+
+
+def test_active_accounts_empty_platforms():
+    assert common.active_accounts(dict(common.DEFAULTS)) == []
