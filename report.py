@@ -127,6 +127,8 @@ def weekly_data(con, cfg, now=None):
             quiet.append(account)
     unavailable = [dict(r) for r in con.execute(
         "SELECT account, last_error FROM account_status WHERE last_error IS NOT NULL")]
+    unavailable_accounts = {u["account"] for u in unavailable}
+    quiet = [a for a in quiet if a not in unavailable_accounts]
     return per_account, quiet, unavailable
 
 

@@ -50,3 +50,28 @@ def test_claude_summary_fallback_on_failure(monkeypatch, tmp_path):
         raise OSError("claude not found")
     monkeypatch.setattr(report.subprocess, "run", boom)
     assert report.claude_summary({"acc": [{"caption": "x"}]}, prompt) is None
+
+
+def test_claude_summary_returns_stripped_output_on_success(monkeypatch, tmp_path):
+    prompt = tmp_path / "weekly.md"
+    prompt.write_text("промпт", encoding="utf-8")
+
+    class FakeResult:
+        returncode = 0
+        stdout = "— все писали про AI\n"
+
+    def fake_run(*a, **kw):
+        return FakeResult()
+
+    monkeypatch.setattr(report.subprocess, "run", fake_run)
+    result = report.claude_summary({"acc": [{"caption": "x"}]}, prompt)
+    assert result == "— все писали про AI"
+
+
+def test_unavailable_account_excluded_from_quiet(con):
+    seed(con)
+    common.set_account_status(con, "quietacc", error="нет данных")
+    per_account, quiet, unavailable = report.weekly_data(con, CFG)
+    assert "quietacc" not in quiet
+    unavailable_accounts = {u["account"] for u in unavailable}
+    assert "quietacc" in unavailable_accounts
