@@ -39,3 +39,50 @@ def test_account_status(con):
     common.set_account_status(con, "acc")  # успех сбрасывает ошибку
     row = con.execute("SELECT * FROM account_status").fetchone()
     assert row["last_error"] is None and row["last_ok"]
+
+
+def test_platform_saved_and_filtered(con):
+    make_post(con, "p1", "acc", 3, 10, 1)                       # instagram по умолчанию
+    common.save_posts(con, [{
+        "post_id": "tg:acc:1", "account": "acc", "platform": "telegram",
+        "caption": "тг", "posted_at": common.now_utc().isoformat(),
+        "likes": 5, "comments": None, "views": 100,
+        "permalink": "https://t.me/acc/1",
+    }])
+    ig = common.latest_metrics(con, "acc")
+    tg = common.latest_metrics(con, "acc", platform="telegram")
+    assert [p["post_id"] for p in ig] == ["p1"]
+    assert [p["post_id"] for p in tg] == ["tg:acc:1"]
+    assert tg[0]["platform"] == "telegram"
+
+
+def test_legacy_db_renamed_and_migrated(tmp_path):
+    legacy = tmp_path / "instawatch.db"
+    import sqlite3
+    old = sqlite3.connect(legacy)
+    old.executescript("""
+        CREATE TABLE posts (post_id TEXT PRIMARY KEY, account TEXT NOT NULL,
+            caption TEXT, posted_at TEXT NOT NULL, permalink TEXT NOT NULL);
+        CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, post_id TEXT NOT NULL,
+            fetched_at TEXT NOT NULL, likes INTEGER, comments INTEGER, views INTEGER);
+        CREATE TABLE alerted (post_id TEXT PRIMARY KEY, alerted_at TEXT NOT NULL);
+        CREATE TABLE account_status (account TEXT PRIMARY KEY, last_ok TEXT, last_error TEXT);
+        INSERT INTO posts VALUES ('old1', 'acc', 'старый', '2026-07-01T00:00:00+00:00', 'u');
+        INSERT INTO account_status (account, last_error) VALUES ('acc', 'ошибка');
+    """)
+    old.commit(); old.close()
+    con = common.connect(tmp_path / "feedwatch.db")
+    assert not legacy.exists()
+    row = con.execute("SELECT platform FROM posts WHERE post_id='old1'").fetchone()
+    assert row["platform"] == "instagram"
+    st = con.execute("SELECT platform, account, last_error, subscribers "
+                     "FROM account_status").fetchone()
+    assert (st["platform"], st["account"], st["last_error"]) == ("instagram", "acc", "ошибка")
+
+
+def test_account_status_platform_and_subscribers(con):
+    common.set_account_status(con, "ch", platform="telegram", subscribers=36300)
+    common.set_account_status(con, "ch", platform="telegram")   # без subscribers — не затирает
+    st = con.execute("SELECT subscribers, last_ok FROM account_status "
+                     "WHERE platform='telegram' AND account='ch'").fetchone()
+    assert st["subscribers"] == 36300 and st["last_ok"] is not None

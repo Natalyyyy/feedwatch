@@ -1,6 +1,6 @@
 {
-  "source": "apify",
-  "accounts": ["natgeo", "nasa"],
+  "instagram": { "source": "apify", "accounts": ["natgeo", "nasa"] },
+  "telegram":  { "source": "web",   "channels": ["telegram"] },
   "pulse_multiplier": 2.0,
   "median_window_days": 30,
   "median_min_posts": 12,

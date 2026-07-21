@@ -9,7 +9,8 @@ import report
 def _stub_env(monkeypatch, con):
     """main() читает конфиг/env/базу напрямую из common — подменяем на тестовые."""
     monkeypatch.setattr(report.common, "load_config",
-                        lambda: dict(common.DEFAULTS, accounts=["acc"], source="apify"))
+                        lambda: dict(common.DEFAULTS,
+                                     instagram={"source": "apify", "accounts": ["acc"]}))
     monkeypatch.setattr(report.common, "load_env", lambda: {})
     monkeypatch.setattr(report.common, "connect", lambda: con)
 
