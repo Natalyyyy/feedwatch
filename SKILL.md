@@ -52,7 +52,8 @@ Python-скрипты: `fetch.py` (сбор), `report.py` (отчёты), `sched
   (холодный старт для нового аккаунта)
 - «убери @X» → удалить из `config.json`
 - «выключи/включи автоматику» → `python3 schedule.py remove` / `install`
-- «как там мониторинг» → `python3 schedule.py status` + хвосты `data/*.log`
+- «как там мониторинг» → `python3 schedule.py status` (+ на macOS хвосты
+  `data/*.log`; в cron на Linux логов нет)
 
 ## Обновление токена Meta («обнови токен инстаграма»)
 
