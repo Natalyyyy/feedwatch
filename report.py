@@ -5,6 +5,8 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+import requests
+
 import common
 import fetch
 import telegram
@@ -72,6 +74,11 @@ TOKEN_EXPIRED_MSG = (
     "Скажи Claude: «обнови токен инстаграма» — он проведёт по шагам."
 )
 
+FETCH_ERROR_MSG = (
+    "⚠️ instawatch: не удалось собрать данные (проблема с сетью, токеном или "
+    "кредитами источника). Проверь .env и баланс Apify."
+)
+
 
 def main():
     ap = argparse.ArgumentParser(description="Отчёты instawatch")
@@ -91,6 +98,12 @@ def main():
                 telegram.send(TOKEN_EXPIRED_MSG, env["TELEGRAM_BOT_TOKEN"],
                               env["TELEGRAM_CHAT_ID"])
             print(TOKEN_EXPIRED_MSG, file=sys.stderr)
+            sys.exit(1)
+        except (fetch.ConfigError, requests.RequestException) as exc:
+            msg = str(exc) if isinstance(exc, fetch.ConfigError) else FETCH_ERROR_MSG
+            if args.send and env.get("TELEGRAM_BOT_TOKEN"):
+                telegram.send(msg, env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"])
+            print(msg, file=sys.stderr)
             sys.exit(1)
 
     if args.mode == "pulse":
@@ -126,7 +139,8 @@ def weekly_data(con, cfg, now=None):
         else:
             quiet.append(account)
     unavailable = [dict(r) for r in con.execute(
-        "SELECT account, last_error FROM account_status WHERE last_error IS NOT NULL")]
+        "SELECT account, last_error FROM account_status WHERE last_error IS NOT NULL")
+        if r["account"] in {a.lower() for a in cfg["accounts"]}]
     unavailable_accounts = {u["account"] for u in unavailable}
     quiet = [a for a in quiet if a not in unavailable_accounts]
     return per_account, quiet, unavailable

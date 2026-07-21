@@ -14,12 +14,14 @@ def seed(con):
 
 def test_weekly_data_split(con):
     seed(con)
+    # "ghost" больше не в cfg["accounts"] — удалённый аккаунт не должен
+    # засорять отчёт вечным "не удалось получить"
     common.set_account_status(con, "ghost", error="не найден")
     per_account, quiet, unavailable = report.weekly_data(con, CFG)
     assert set(per_account) == {"acc"}
     assert len(per_account["acc"]) == 2          # только посты за 7 дней
     assert quiet == ["quietacc"]
-    assert unavailable[0]["account"] == "ghost"
+    assert unavailable == []
 
 
 def test_ratios_and_fresh_flag(con):

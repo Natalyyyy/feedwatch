@@ -45,6 +45,21 @@ def test_unavailable_account_collected(monkeypatch):
     assert records == [] and "ghost" in errors
 
 
+def test_run_fetch_missing_apify_token_raises_config_error(con):
+    cfg = dict(common.DEFAULTS, accounts=["acc"], source="apify")
+    with pytest.raises(fetch.ConfigError) as excinfo:
+        fetch.run_fetch(12, cfg=cfg, env={}, con=con)
+    assert "APIFY_TOKEN" in str(excinfo.value)
+
+
+def test_run_fetch_missing_graph_env_raises_config_error(con):
+    cfg = dict(common.DEFAULTS, accounts=["acc"], source="metagraph")
+    with pytest.raises(fetch.ConfigError) as excinfo:
+        fetch.run_fetch(12, cfg=cfg, env={}, con=con)
+    msg = str(excinfo.value)
+    assert "IG_ACCESS_TOKEN" in msg and "IG_BUSINESS_ID" in msg
+
+
 def test_run_fetch_persists_and_sets_status(monkeypatch, con, tmp_path):
     monkeypatch.setattr(fetch, "fetch_apify",
                         lambda accounts, limit, token:

@@ -15,6 +15,23 @@ class TokenExpiredError(Exception):
     """Meta Graph API вернул код 190 — long-lived токен протух."""
 
 
+class ConfigError(Exception):
+    """Не хватает обязательного ключа в .env."""
+
+
+def _require_env(env, keys):
+    missing = [k for k in keys if not env.get(k)]
+    if not missing:
+        return
+    if len(missing) == 1:
+        raise ConfigError(
+            "Не найден {} в .env — заполни его по образцу .env.example".format(missing[0])
+        )
+    raise ConfigError(
+        "Не найдены {} в .env — заполни их по образцу .env.example".format(", ".join(missing))
+    )
+
+
 def normalize_apify(item):
     likes = item.get("likesCount")
     if likes is not None and likes < 0:  # -1 = лайки скрыты
@@ -95,8 +112,10 @@ def run_fetch(limit, cfg=None, env=None, con=None):
     con = con or common.connect()
     accounts = cfg["accounts"]
     if cfg["source"] == "apify":
+        _require_env(env, ["APIFY_TOKEN"])
         records, errors = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
     else:
+        _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
         records, errors = fetch_graph(accounts, limit,
                                       env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
     common.save_posts(con, records)
