@@ -108,5 +108,86 @@ def main():
         telegram.send(text, env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"])
 
 
+def weekly_data(con, cfg, now=None):
+    now = now or common.now_utc()
+    week_ago = now - timedelta(days=7)
+    per_account, quiet = {}, []
+    for account in cfg["accounts"]:
+        account = account.lower()
+        med = common.account_medians(con, account, cfg, now=now)
+        posts = [p for p in common.latest_metrics(con, account)
+                 if common.parse_ts(p["posted_at"]) >= week_ago]
+        for p in posts:
+            p["like_ratio"] = format_ratio(p["likes"], med["likes"])
+            p["comment_ratio"] = format_ratio(p["comments"], med["comments"])
+            p["fresh"] = post_age_days(p, now) < cfg["median_min_age_days"]
+        if posts:
+            per_account[account] = posts
+        else:
+            quiet.append(account)
+    unavailable = [dict(r) for r in con.execute(
+        "SELECT account, last_error FROM account_status WHERE last_error IS NOT NULL")]
+    return per_account, quiet, unavailable
+
+
+def format_top(all_posts, key, title, emoji, n=10):
+    ranked = sorted((p for p in all_posts if p[key] is not None),
+                    key=lambda p: p[key], reverse=True)
+    lines = ["{} {}".format(emoji, title), ""]
+    for p in ranked[:n]:
+        growing = " ⏳ ещё растёт" if p["fresh"] else ""
+        likes = "—" if p["likes"] is None else p["likes"]
+        lines.append("@{} — ×{:.1f} от медианы{}".format(p["account"], p[key], growing))
+        stats = "❤️ {} 💬 {}".format(likes, p["comments"])
+        if p.get("views"):
+            stats += " ▶️ {}".format(p["views"])
+        lines.append(stats)
+        if preview(p["caption"]):
+            lines.append(preview(p["caption"]))
+        lines.append(p["permalink"])
+        lines.append("")
+    return lines
+
+
+def claude_summary(per_account, prompt_path):
+    """Тематическая выжимка недели через headless Claude. Любой сбой → None."""
+    digest = []
+    for account, posts in per_account.items():
+        digest.append("## @{}".format(account))
+        digest.extend("- " + preview(p["caption"], 500) for p in posts)
+    prompt = Path(prompt_path).read_text(encoding="utf-8") + "\n\n" + "\n".join(digest)
+    try:
+        result = subprocess.run(
+            ["claude", "-p", "--output-format", "text"],
+            input=prompt, capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def build_weekly(con, cfg, now=None):
+    per_account, quiet, unavailable = weekly_data(con, cfg, now=now)
+    all_posts = [p for posts in per_account.values() for p in posts]
+    lines = ["📊 Инстаграм за неделю", ""]
+    if per_account:
+        summary = claude_summary(per_account, common.ROOT / "prompts" / "weekly.md")
+        if summary:
+            lines += ["🧠 О чём писали", "", summary, ""]
+    if all_posts:
+        lines += format_top(all_posts, "like_ratio", "Топ по лайкам (×N от медианы аккаунта)", "❤️")
+        lines += format_top(all_posts, "comment_ratio", "Топ по комментам (×N от медианы аккаунта)", "💬")
+    else:
+        lines.append("За неделю ни одного нового поста.")
+    if quiet:
+        lines.append("😴 Молчали: " + ", ".join("@{}".format(a) for a in quiet))
+    if unavailable:
+        lines.append("⚠️ Не удалось получить: " + "; ".join(
+            "@{} ({})".format(u["account"], u["last_error"]) for u in unavailable))
+    return "\n".join(lines).strip()
+
+
 if __name__ == "__main__":
     main()
