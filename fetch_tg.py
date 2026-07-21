@@ -1,6 +1,7 @@
 """Сбор постов Telegram-каналов: веб-превью t.me/s (без ключей) или TGStat API."""
 import html as html_module
 import re
+from datetime import datetime, timezone
 
 import requests
 
@@ -111,4 +112,63 @@ def fetch_web(channels, limit, session=None):
         records += chan_records[:limit]
         if chan_subs is not None:
             subs[channel] = chan_subs
+    return records, errors, subs
+
+
+TGSTAT_BASE = "https://api.tgstat.ru"
+
+
+class TGStatError(Exception):
+    """TGStat вернул status=error или не-JSON."""
+
+
+def _tgstat_request(method, params, token):
+    resp = requests.get("{}/{}".format(TGSTAT_BASE, method),
+                        params=dict(params, token=token), timeout=60)
+    try:
+        data = resp.json()
+    except ValueError:
+        raise TGStatError("не-JSON ответ от TGStat /{}".format(method))
+    if data.get("status") == "ok":
+        return data.get("response") or {}
+    raise TGStatError(str(data.get("error") or data))
+
+
+def normalize_tgstat(channel, item):
+    return {
+        "post_id": "tg:{}:{}".format(channel, item["id"]),
+        "account": channel,
+        "platform": "telegram",
+        "caption": _strip_html(item.get("text") or ""),
+        "posted_at": datetime.fromtimestamp(item["date"], tz=timezone.utc).isoformat(),
+        "likes": None,      # лёгкий режим TGStat реакции не отдаёт
+        "comments": None,
+        "views": item.get("views"),
+        "permalink": item.get("link") or "https://t.me/{}".format(channel),
+    }
+
+
+def fetch_tgstat(channels, limit, token, subscribers=False):
+    """Посты каналов из TGStat API (лёгкий режим: только channels/posts
+    [+ channels/get при subscribers=True]). → (records, errors, subs)."""
+    records, errors, subs = [], {}, {}
+    for channel in channels:
+        key = channel.lower()
+        try:
+            resp = _tgstat_request(
+                "channels/posts",
+                {"channelId": "@" + channel, "limit": limit, "hideDeleted": 1},
+                token)
+        except (TGStatError, requests.RequestException) as exc:
+            errors[key] = str(exc)
+            continue
+        for item in resp.get("items", []):
+            records.append(normalize_tgstat(key, item))
+        if subscribers:
+            try:
+                info = _tgstat_request("channels/get", {"channelId": "@" + channel}, token)
+                if info.get("participants_count") is not None:
+                    subs[key] = info["participants_count"]
+            except (TGStatError, requests.RequestException):
+                pass    # подписчики — некритичное украшение
     return records, errors, subs
