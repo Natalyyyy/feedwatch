@@ -53,3 +53,69 @@ def fetch_apify(accounts, limit, token):
         if a.lower() not in got and a.lower() not in errors:
             errors[a.lower()] = "нет данных (закрыт / переименован / не найден?)"
     return records, errors
+
+
+def normalize_graph(account, media):
+    return {
+        "post_id": media["id"],
+        "account": account.lower(),
+        "caption": media.get("caption") or "",
+        "posted_at": media["timestamp"],  # parse_ts переварит '+0000' при чтении
+        "likes": media.get("like_count"),  # нет поля = лайки скрыты
+        "comments": media.get("comments_count"),
+        "views": None,  # business_discovery не отдаёт просмотры по чужим аккаунтам
+        "permalink": media["permalink"],
+    }
+
+
+def fetch_graph(accounts, limit, ig_id, token):
+    records, errors = [], {}
+    for account in accounts:
+        fields = ("business_discovery.username({}){{media.limit({})"
+                  "{{id,caption,like_count,comments_count,permalink,timestamp}}}}"
+                  ).format(account, limit)
+        resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
+                            params={"fields": fields, "access_token": token},
+                            timeout=60)
+        data = resp.json()
+        if "error" in data:
+            err = data["error"]
+            if err.get("code") == 190:
+                raise TokenExpiredError(err.get("message", "token expired"))
+            errors[account.lower()] = err.get("message", "неизвестная ошибка")
+            continue
+        media = data.get("business_discovery", {}).get("media", {}).get("data", [])
+        records.extend(normalize_graph(account, m) for m in media)
+    return records, errors
+
+
+def run_fetch(limit, cfg=None, env=None, con=None):
+    cfg = cfg or common.load_config()
+    env = env or common.load_env()
+    con = con or common.connect()
+    accounts = cfg["accounts"]
+    if cfg["source"] == "apify":
+        records, errors = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
+    else:
+        records, errors = fetch_graph(accounts, limit,
+                                      env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
+    common.save_posts(con, records)
+    for a in accounts:
+        a = a.lower()
+        common.set_account_status(con, a, error=errors.get(a))
+    return records, errors
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Сбор постов в базу instawatch")
+    ap.add_argument("--limit", type=int, default=12,
+                    help="постов на аккаунт (30 для холодного старта)")
+    args = ap.parse_args()
+    records, errors = run_fetch(args.limit)
+    print("Сохранено постов: {}".format(len(records)))
+    for a, e in errors.items():
+        print("⚠️ @{}: {}".format(a, e), file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
