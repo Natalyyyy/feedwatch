@@ -27,23 +27,43 @@ def preview(caption, limit=120):
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+PLATFORM_TITLES = {"instagram": "📸 Instagram", "telegram": "✈️ Telegram"}
+METRIC_RU = {"likes": "лайкам", "comments": "комментам", "views": "просмотрам"}
+
+
+def stats_line(p):
+    if p["platform"] == "telegram":
+        stats = "👁 {}".format(p["views"] if p["views"] is not None else "—")
+        if p["likes"] is not None:
+            stats += " ❤️ {}".format(p["likes"])
+        return stats
+    likes = "—" if p["likes"] is None else p["likes"]
+    stats = "❤️ {} 💬 {}".format(likes, p["comments"])
+    if p.get("views"):
+        stats += " ▶️ {}".format(p["views"])
+    return stats
+
+
 def pulse_signals(con, cfg, now=None):
     now = now or common.now_utc()
     k = cfg["pulse_multiplier"]
     signals = []
-    for account in cfg["accounts"]:
-        account = account.lower()
-        med = common.account_medians(con, account, cfg, now=now)
-        for post in common.latest_metrics(con, account):
+    for platform, account in common.active_accounts(cfg):
+        med = common.account_medians(con, account, cfg, now=now, platform=platform)
+        for post in common.latest_metrics(con, account, platform=platform):
             if post_age_days(post, now) > cfg["pulse_max_age_days"]:
                 continue
             if common.was_alerted(con, post["post_id"]):
                 continue
-            likes_hidden = post["likes"] is None
-            if likes_hidden:
-                ratio, metric = format_ratio(post["comments"], med["comments"]), "comments"
+            likes_hidden = False
+            if platform == "telegram":
+                ratio, metric = format_ratio(post["views"], med["views"]), "views"
             else:
-                ratio, metric = format_ratio(post["likes"], med["likes"]), "likes"
+                likes_hidden = post["likes"] is None
+                if likes_hidden:
+                    ratio, metric = format_ratio(post["comments"], med["comments"]), "comments"
+                else:
+                    ratio, metric = format_ratio(post["likes"], med["likes"]), "likes"
             if ratio is not None and ratio >= k:
                 signals.append({**post, "ratio": ratio, "metric": metric,
                                 "likes_hidden": likes_hidden})
@@ -51,21 +71,24 @@ def pulse_signals(con, cfg, now=None):
 
 
 def format_pulse(signals):
-    lines = ["🔥 Инстаграм-пульс: залетает выше медианы", ""]
-    for s in signals:
-        metric_ru = "комментам" if s["metric"] == "comments" else "лайкам"
-        hidden = " (лайки скрыты)" if s["likes_hidden"] else ""
-        likes = "—" if s["likes"] is None else s["likes"]
-        lines.append("@{}{} — ×{:.1f} от медианы по {}".format(
-            s["account"], hidden, s["ratio"], metric_ru))
-        stats = "❤️ {} 💬 {}".format(likes, s["comments"])
-        if s.get("views"):
-            stats += " ▶️ {}".format(s["views"])
-        lines.append(stats)
-        if preview(s["caption"]):
-            lines.append(preview(s["caption"]))
-        lines.append(s["permalink"])
-        lines.append("")
+    lines = ["🔥 Пульс: залетает выше медианы", ""]
+    platforms = {s["platform"] for s in signals}
+    for platform in ("instagram", "telegram"):
+        group = [s for s in signals if s["platform"] == platform]
+        if not group:
+            continue
+        if len(platforms) > 1:
+            lines.append(PLATFORM_TITLES[platform])
+            lines.append("")
+        for s in group:
+            hidden = " (лайки скрыты)" if s["likes_hidden"] else ""
+            lines.append("@{}{} — ×{:.1f} от медианы по {}".format(
+                s["account"], hidden, s["ratio"], METRIC_RU[s["metric"]]))
+            lines.append(stats_line(s))
+            if preview(s["caption"]):
+                lines.append(preview(s["caption"]))
+            lines.append(s["permalink"])
+            lines.append("")
     return "\n".join(lines).strip()
 
 

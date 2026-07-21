@@ -2,12 +2,22 @@ import common
 import report
 from conftest import make_post
 
-CFG = dict(common.DEFAULTS, accounts=["acc"], median_min_posts=3, pulse_multiplier=2.0)
+CFG = dict(common.DEFAULTS, instagram={"source": "apify", "accounts": ["acc"]},
+           median_min_posts=3, pulse_multiplier=2.0)
 
 
 def seed_baseline(con):
     for i, likes in enumerate([100, 100, 100]):
         make_post(con, "base{}".format(i), "acc", days_old=5 + i, likes=likes, comments=10)
+
+
+def seed_tg(con, n_base=3, views_base=100, now=None):
+    now = now or common.now_utc()
+    for i in range(n_base):
+        make_post(con, f"tgb{i}", "ch", 5 + i, None, None, views=views_base, now=now)
+    make_post(con, "tghot", "ch", 1, None, None, views=views_base * 3, now=now)
+    con.execute("UPDATE posts SET platform='telegram' WHERE account='ch'")
+    con.commit()
 
 
 def test_signal_above_median(con):
@@ -53,3 +63,28 @@ def test_format_pulse_has_permalink_every_signal(con):
     text = report.format_pulse(report.pulse_signals(con, CFG))
     assert "https://www.instagram.com/p/hit/" in text
     assert "×2.5" in text
+
+
+def test_tg_pulse_triggers_on_views(con):
+    cfg = dict(common.DEFAULTS, telegram={"source": "web", "channels": ["ch"]},
+               median_min_posts=3, pulse_multiplier=2.0)
+    seed_tg(con)
+    signals = report.pulse_signals(con, cfg)
+    assert [s["post_id"] for s in signals] == ["tghot"]
+    assert signals[0]["metric"] == "views" and signals[0]["ratio"] == 3.0
+
+
+def test_format_pulse_sections_when_both_platforms():
+    ig = {"post_id": "p", "account": "acc", "platform": "instagram", "caption": "",
+          "posted_at": "2026-07-20T00:00:00+00:00", "permalink": "u1",
+          "likes": 10, "comments": 2, "views": None,
+          "ratio": 2.5, "metric": "likes", "likes_hidden": False}
+    tg = {"post_id": "tg:ch:1", "account": "ch", "platform": "telegram", "caption": "",
+          "posted_at": "2026-07-20T00:00:00+00:00", "permalink": "u2",
+          "likes": 5, "comments": None, "views": 300,
+          "ratio": 3.0, "metric": "views", "likes_hidden": False}
+    text = report.format_pulse([ig, tg])
+    assert "📸 Instagram" in text and "✈️ Telegram" in text
+    assert "по просмотрам" in text and "👁 300" in text
+    single = report.format_pulse([tg])
+    assert "✈️ Telegram" not in single      # одна платформа — без подзаголовка
