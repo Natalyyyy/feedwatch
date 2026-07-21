@@ -152,12 +152,33 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
     return records, {k: v for k, v in errors.items() if v}
 
 
+TOKEN_EXPIRED_MSG = (
+    "⚠️ feedwatch: токен Meta Graph API протух (он живёт 60 дней).\n"
+    "Скажи Claude: «обнови токен инстаграма» — он проведёт по шагам."
+)
+
+FETCH_ERROR_MSG = (
+    "⚠️ Не удалось собрать данные — проблема с сетью или источником. "
+    "Проверь .env и подключение."
+)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Сбор постов в базу feedwatch")
     ap.add_argument("--limit", type=int, default=12,
                     help="постов на аккаунт (30 для холодного старта)")
     args = ap.parse_args()
-    records, errors = run_fetch(args.limit)
+    try:
+        records, errors = run_fetch(args.limit)
+    except TokenExpiredError:
+        print(TOKEN_EXPIRED_MSG, file=sys.stderr)
+        sys.exit(1)
+    except ConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    except requests.RequestException:
+        print(FETCH_ERROR_MSG, file=sys.stderr)
+        sys.exit(1)
     print("Сохранено постов: {}".format(len(records)))
     for (platform, a), e in errors.items():
         print("⚠️ [{}] @{}: {}".format(platform, a, e), file=sys.stderr)
