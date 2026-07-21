@@ -18,6 +18,15 @@ def test_split_giant_line():
     assert "".join(chunks) == "х" * 500
 
 
+def test_split_mixed_short_and_giant_lines():
+    text = "\n".join(["короткая строка 1", "г" * 500, "короткая строка 2"])
+    chunks = telegram.split_message(text, max_len=200)
+    assert all(len(c) <= 200 for c in chunks)
+    # ничего не потеряли: все не-\n символы сохранены и в том же порядке,
+    # хотя на стыке жёсткого разреза возможен спорный \n (см. докстринг)
+    assert text.replace("\n", "") == "".join(chunks).replace("\n", "")
+
+
 def test_send_posts_each_chunk(monkeypatch):
     sent = []
     class FakeResp:
