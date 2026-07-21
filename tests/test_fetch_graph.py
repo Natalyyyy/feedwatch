@@ -45,14 +45,21 @@ def test_unavailable_account_collected(monkeypatch):
     assert records == [] and "ghost" in errors
 
 
-def test_run_fetch_missing_apify_token_raises_config_error(con):
+def test_run_fetch_missing_apify_token_raises_config_error(monkeypatch, con):
+    # run_fetch делает `env = env or common.load_env()` — пустой env={} falsy,
+    # поэтому без подмены load_env тест читал бы реальный .env с диска и мог
+    # улететь в живой запрос к Apify. Глушим load_env, чтобы тест был герметичным.
+    monkeypatch.setattr(fetch.common, "load_env", lambda *a, **k: {})
     cfg = dict(common.DEFAULTS, accounts=["acc"], source="apify")
     with pytest.raises(fetch.ConfigError) as excinfo:
         fetch.run_fetch(12, cfg=cfg, env={}, con=con)
     assert "APIFY_TOKEN" in str(excinfo.value)
 
 
-def test_run_fetch_missing_graph_env_raises_config_error(con):
+def test_run_fetch_missing_graph_env_raises_config_error(monkeypatch, con):
+    # См. комментарий выше: пустой env={} — falsy, run_fetch иначе подхватил бы
+    # реальный .env с диска и обратился бы к живому Meta Graph API.
+    monkeypatch.setattr(fetch.common, "load_env", lambda *a, **k: {})
     cfg = dict(common.DEFAULTS, accounts=["acc"], source="metagraph")
     with pytest.raises(fetch.ConfigError) as excinfo:
         fetch.run_fetch(12, cfg=cfg, env={}, con=con)
