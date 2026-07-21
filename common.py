@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
-DB_PATH = DATA_DIR / "instawatch.db"
+DB_PATH = DATA_DIR / "feedwatch.db"
 CONFIG_PATH = ROOT / "config.json"
 ENV_PATH = ROOT / ".env"
 
@@ -86,10 +86,22 @@ def parse_ts(value):
     return datetime.fromisoformat(value)
 
 
+ACCOUNT_STATUS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS account_status (
+    platform TEXT NOT NULL DEFAULT 'instagram',
+    account TEXT NOT NULL,
+    last_ok TEXT,
+    last_error TEXT,
+    subscribers INTEGER,
+    PRIMARY KEY (platform, account)
+);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
     post_id TEXT PRIMARY KEY,
     account TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'instagram',
     caption TEXT,
     posted_at TEXT NOT NULL,
     permalink TEXT NOT NULL
@@ -106,31 +118,45 @@ CREATE TABLE IF NOT EXISTS alerted (
     post_id TEXT PRIMARY KEY,
     alerted_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS account_status (
-    account TEXT PRIMARY KEY,
-    last_ok TEXT,
-    last_error TEXT
-);
-"""
+""" + ACCOUNT_STATUS_SCHEMA
 
 
 def connect(db_path=None):
     path = Path(db_path or DB_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = path.parent / "instawatch.db"
+    if path.name == "feedwatch.db" and not path.exists() and legacy.exists():
+        legacy.rename(path)
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    _migrate(con)
     return con
+
+
+def _migrate(con):
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(posts)")}
+    if "platform" not in cols:
+        con.execute("ALTER TABLE posts ADD COLUMN platform TEXT NOT NULL DEFAULT 'instagram'")
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(account_status)")}
+    if "platform" not in cols:
+        con.execute("ALTER TABLE account_status RENAME TO account_status_legacy")
+        con.executescript(ACCOUNT_STATUS_SCHEMA)
+        con.execute("INSERT INTO account_status (platform, account, last_ok, last_error) "
+                    "SELECT 'instagram', account, last_ok, last_error FROM account_status_legacy")
+        con.execute("DROP TABLE account_status_legacy")
+    con.commit()
 
 
 def save_posts(con, records, fetched_at=None):
     fetched = (fetched_at or now_utc()).isoformat() if not isinstance(fetched_at, str) else fetched_at
     for r in records:
         con.execute(
-            "INSERT INTO posts (post_id, account, caption, posted_at, permalink) "
-            "VALUES (?,?,?,?,?) "
+            "INSERT INTO posts (post_id, account, platform, caption, posted_at, permalink) "
+            "VALUES (?,?,?,?,?,?) "
             "ON CONFLICT(post_id) DO UPDATE SET caption=excluded.caption",
-            (r["post_id"], r["account"], r["caption"], r["posted_at"], r["permalink"]),
+            (r["post_id"], r["account"], r.get("platform", "instagram"), r["caption"],
+             r["posted_at"], r["permalink"]),
         )
         con.execute(
             "INSERT INTO snapshots (post_id, fetched_at, likes, comments, views) "
@@ -140,19 +166,20 @@ def save_posts(con, records, fetched_at=None):
     con.commit()
 
 
-def latest_metrics(con, account):
+def latest_metrics(con, account, platform="instagram"):
     """Последний снапшот каждого поста аккаунта, свежие посты первыми."""
     rows = con.execute(
         """
-        SELECT p.post_id, p.account, p.caption, p.posted_at, p.permalink,
+        SELECT p.post_id, p.account, p.platform, p.caption, p.posted_at, p.permalink,
                s.likes, s.comments, s.views
         FROM posts p
         JOIN snapshots s ON s.post_id = p.post_id
         WHERE p.account = ?
+          AND p.platform = ?
           AND s.id = (SELECT MAX(id) FROM snapshots WHERE post_id = p.post_id)
         ORDER BY p.posted_at DESC
         """,
-        (account,),
+        (account, platform),
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -199,18 +226,22 @@ def account_medians(con, account, cfg, now=None):
             "n_posts": len(in_window)}
 
 
-def set_account_status(con, account, error=None, at=None):
+def set_account_status(con, account, error=None, at=None, platform="instagram",
+                       subscribers=None):
     stamp = (at or now_utc()).isoformat()
     if error is None:
         con.execute(
-            "INSERT INTO account_status (account, last_ok, last_error) VALUES (?,?,NULL) "
-            "ON CONFLICT(account) DO UPDATE SET last_ok=excluded.last_ok, last_error=NULL",
-            (account, stamp),
+            "INSERT INTO account_status (platform, account, last_ok, last_error, subscribers) "
+            "VALUES (?,?,?,NULL,?) "
+            "ON CONFLICT(platform, account) DO UPDATE SET last_ok=excluded.last_ok, "
+            "last_error=NULL, "
+            "subscribers=COALESCE(excluded.subscribers, account_status.subscribers)",
+            (platform, account, stamp, subscribers),
         )
     else:
         con.execute(
-            "INSERT INTO account_status (account, last_error) VALUES (?,?) "
-            "ON CONFLICT(account) DO UPDATE SET last_error=excluded.last_error",
-            (account, error),
+            "INSERT INTO account_status (platform, account, last_error) VALUES (?,?,?) "
+            "ON CONFLICT(platform, account) DO UPDATE SET last_error=excluded.last_error",
+            (platform, account, error),
         )
     con.commit()
