@@ -1,4 +1,4 @@
-"""Сбор постов Instagram (Apify или Meta Graph API) → SQLite."""
+"""Сбор постов feedwatch (Instagram: Apify/Meta Graph API; Telegram: web/TGStat) → SQLite."""
 import argparse
 import sys
 
@@ -153,7 +153,7 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Сбор постов в базу instawatch")
+    ap = argparse.ArgumentParser(description="Сбор постов в базу feedwatch")
     ap.add_argument("--limit", type=int, default=12,
                     help="постов на аккаунт (30 для холодного старта)")
     args = ap.parse_args()

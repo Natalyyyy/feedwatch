@@ -1,4 +1,4 @@
-"""Расписание instawatch: launchd (Mac) или cron (Linux)."""
+"""Расписание feedwatch: launchd (Mac) или cron (Linux)."""
 import argparse
 import platform
 import subprocess
@@ -7,10 +7,17 @@ from pathlib import Path
 
 import common
 
-LABEL_PULSE = "com.instawatch.pulse"
-LABEL_WEEKLY = "com.instawatch.weekly"
-CRON_MARK = "# instawatch"
+LABEL_PULSE = "com.feedwatch.pulse"
+LABEL_WEEKLY = "com.feedwatch.weekly"
+CRON_MARK = "# feedwatch"
+LEGACY_LABELS = ["com.instawatch.pulse", "com.instawatch.weekly"]
+LEGACY_CRON_MARK = "# instawatch"
 WEEKDAYS = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+
+
+def filter_cron(lines):
+    """Убирает строки crontab с текущим или legacy-маркером."""
+    return [l for l in lines if CRON_MARK not in l and LEGACY_CRON_MARK not in l]
 
 
 def parse_time(value):
@@ -67,18 +74,25 @@ def install(cfg):
         agents.mkdir(parents=True, exist_ok=True)
         ph, pm = parse_time(cfg["pulse_time"])
         wh, wm = parse_time(cfg["weekly_time"])
+        for label in [LABEL_PULSE, LABEL_WEEKLY] + LEGACY_LABELS:
+            path = agents / (label + ".plist")
+            if path.exists():
+                subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
         jobs = [(LABEL_PULSE, "pulse", ph, pm, None),
                 (LABEL_WEEKLY, "weekly", wh, wm, WEEKDAYS[cfg["weekly_day"]])]
         for label, mode, h, m, wd in jobs:
             path = agents / (label + ".plist")
             path.write_text(plist_xml(label, mode, h, m, wd), encoding="utf-8")
-            subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
             subprocess.run(["launchctl", "load", str(path)], check=True)
+        for label in LEGACY_LABELS:
+            path = agents / (label + ".plist")
+            if path.exists():
+                path.unlink()
         print("Готово (launchd): пульс ежедневно в {}, отчёт по {} в {}.".format(
             cfg["pulse_time"], cfg["weekly_day"], cfg["weekly_time"]))
     else:
         current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        lines = [l for l in (current.stdout or "").splitlines() if CRON_MARK not in l]
+        lines = filter_cron((current.stdout or "").splitlines())
         lines += cron_lines(cfg)
         subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
                        text=True, check=True)
@@ -88,7 +102,7 @@ def install(cfg):
 def remove():
     if platform.system() == "Darwin":
         agents = Path.home() / "Library" / "LaunchAgents"
-        for label in (LABEL_PULSE, LABEL_WEEKLY):
+        for label in [LABEL_PULSE, LABEL_WEEKLY] + LEGACY_LABELS:
             path = agents / (label + ".plist")
             if path.exists():
                 subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
@@ -96,7 +110,7 @@ def remove():
         print("Расписание снято (launchd).")
     else:
         current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        lines = [l for l in (current.stdout or "").splitlines() if CRON_MARK not in l]
+        lines = filter_cron((current.stdout or "").splitlines())
         subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
                        text=True, check=True)
         print("Расписание снято (cron).")
@@ -105,7 +119,7 @@ def remove():
 def status():
     if platform.system() == "Darwin":
         out = subprocess.run(["launchctl", "list"], capture_output=True, text=True).stdout
-        found = [l for l in out.splitlines() if "instawatch" in l]
+        found = [l for l in out.splitlines() if "feedwatch" in l]
     else:
         out = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
         found = [l for l in out.splitlines() if CRON_MARK in l]
@@ -113,7 +127,7 @@ def status():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Расписание instawatch")
+    ap = argparse.ArgumentParser(description="Расписание feedwatch")
     ap.add_argument("action", choices=["install", "remove", "status"])
     args = ap.parse_args()
     if args.action == "install":

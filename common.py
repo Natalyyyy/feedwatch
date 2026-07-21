@@ -1,4 +1,4 @@
-"""Общие утилиты instawatch: .env, конфиг, база, медианы."""
+"""Общие утилиты feedwatch: .env, конфиг, база, медианы."""
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone

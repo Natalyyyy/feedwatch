@@ -1,4 +1,4 @@
-"""Отчёты instawatch: ежедневный пульс и еженедельный разбор."""
+"""Отчёты feedwatch: ежедневный пульс и еженедельный разбор."""
 import argparse
 import subprocess
 import sys
@@ -93,18 +93,18 @@ def format_pulse(signals):
 
 
 TOKEN_EXPIRED_MSG = (
-    "⚠️ instawatch: токен Meta Graph API протух (он живёт 60 дней).\n"
+    "⚠️ feedwatch: токен Meta Graph API протух (он живёт 60 дней).\n"
     "Скажи Claude: «обнови токен инстаграма» — он проведёт по шагам."
 )
 
 FETCH_ERROR_MSG = (
-    "⚠️ instawatch: не удалось собрать данные (проблема с сетью, токеном или "
-    "кредитами источника). Проверь .env и баланс Apify."
+    "⚠️ feedwatch: не удалось собрать данные (проблема с сетью, токеном или "
+    "кредитами источника). Проверь .env и баланс источника."
 )
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Отчёты instawatch")
+    ap = argparse.ArgumentParser(description="Отчёты feedwatch")
     ap.add_argument("mode", choices=["pulse", "weekly"])
     ap.add_argument("--send", action="store_true", help="отправить в Telegram")
     ap.add_argument("--no-fetch", action="store_true", help="только по данным из базы")
