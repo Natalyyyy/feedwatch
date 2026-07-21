@@ -163,6 +163,8 @@ def fetch_tgstat(channels, limit, token, subscribers=False):
             errors[key] = str(exc)
             continue
         for item in resp.get("items", []):
+            if item.get("id") is None or item.get("date") is None:
+                continue    # пропускаем битый/служебный элемент
             records.append(normalize_tgstat(key, item))
         if subscribers:
             try:

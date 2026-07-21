@@ -53,3 +53,19 @@ def test_fetch_tgstat_no_subscribers_no_extra_request(monkeypatch):
     monkeypatch.setattr(fetch_tg.requests, "get", fake_get)
     fetch_tg.fetch_tgstat(["ch"], 25, "tok", subscribers=False)
     assert len(calls) == 1 and calls[0].endswith("channels/posts")
+
+
+POSTS_ONE_MALFORMED = {"status": "ok", "response": {"items": [
+    {"id": 4174011852, "date": 1784476800, "views": 1500,
+     "text": "<b>жирный</b> пост", "link": "https://t.me/ch/419"},
+    {"views": 5},   # служебный/битый элемент — без id и date
+]}}
+
+
+def test_fetch_tgstat_skips_malformed_item(monkeypatch):
+    monkeypatch.setattr(fetch_tg.requests, "get",
+                        lambda url, params=None, timeout=None: FakeResp(POSTS_ONE_MALFORMED))
+    records, errors, subs = fetch_tg.fetch_tgstat(["ch"], 25, "tok")
+    assert len(records) == 1
+    assert records[0]["post_id"] == "tg:ch:4174011852"
+    assert errors == {}
