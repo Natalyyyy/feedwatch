@@ -210,20 +210,21 @@ def _median(values):
     return (values[mid - 1] + values[mid]) / 2.0
 
 
-def account_medians(con, account, cfg, now=None):
-    """Медианы лайков/комментов аккаунта по окну из конфига."""
+def account_medians(con, account, cfg, now=None, platform="instagram"):
+    """Медианы лайков/комментов/просмотров аккаунта по окну из конфига."""
     now = now or now_utc()
     min_age = now - timedelta(days=cfg["median_min_age_days"])
     window_start = now - timedelta(days=cfg["median_window_days"])
-    settled = [p for p in latest_metrics(con, account)
+    settled = [p for p in latest_metrics(con, account, platform=platform)
                if parse_ts(p["posted_at"]) <= min_age]      # свежие первыми
     in_window = [p for p in settled if parse_ts(p["posted_at"]) >= window_start]
     if len(in_window) < cfg["median_min_posts"]:
         in_window = settled[:cfg["median_min_posts"]]
     likes = [p["likes"] for p in in_window if p["likes"] is not None]
     comments = [p["comments"] for p in in_window if p["comments"] is not None]
+    views = [p["views"] for p in in_window if p["views"] is not None]
     return {"likes": _median(likes), "comments": _median(comments),
-            "n_posts": len(in_window)}
+            "views": _median(views), "n_posts": len(in_window)}
 
 
 def set_account_status(con, account, error=None, at=None, platform="instagram",

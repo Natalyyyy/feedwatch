@@ -43,3 +43,14 @@ def test_hidden_likes_skipped_in_likes_median(con):
 def test_no_posts_returns_none(con):
     med = common.account_medians(con, "acc", CFG)
     assert med["likes"] is None and med["comments"] is None and med["n_posts"] == 0
+
+
+def test_views_median_and_platform(con):
+    now = common.now_utc()
+    for i, v in enumerate([100, 200, 300]):
+        make_post(con, "tg{}".format(i), "ch", 5 + i, None, None, views=v, now=now)
+        con.execute("UPDATE posts SET platform='telegram' WHERE post_id=?", ("tg{}".format(i),))
+    con.commit()
+    med = common.account_medians(con, "ch", CFG, now=now, platform="telegram")
+    assert med["views"] == 200
+    assert med["likes"] is None
