@@ -1,0 +1,14 @@
+{
+  "source": "apify",
+  "accounts": ["natgeo", "nasa"],
+  "pulse_multiplier": 2.0,
+  "median_window_days": 30,
+  "median_min_posts": 12,
+  "median_min_age_days": 2,
+  "pulse_max_age_days": 3,
+  "fetch_limit_pulse": 12,
+  "fetch_limit_weekly": 25,
+  "weekly_day": "sun",
+  "weekly_time": "18:00",
+  "pulse_time": "10:00"
+}
