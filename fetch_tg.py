@@ -45,9 +45,11 @@ def parse_page(page_html, channel):
         min_id = post_id if min_id is None else min(min_id, post_id)
         text_m = re.search(r'tgme_widget_message_text[^>]*>(.*?)</div>', block, re.S)
         views_m = re.search(r'tgme_widget_message_views">([^<]+)<', block)
-        reactions = re.findall(
-            r'<span class="tgme_reaction">.*?</i>\s*([\d.,KMkm\xa0 ]+)</span>',
-            block, re.S)
+        reactions = []
+        for span in re.findall(r'<span class="tgme_reaction">(.*?)</span>', block, re.S):
+            rm = re.search(r'([\d.,KMkm\xa0]+)\s*$', span)
+            if rm:
+                reactions.append(rm.group(1))
         likes = None
         if reactions:
             parsed = [parse_count(r) for r in reactions]
