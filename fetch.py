@@ -95,7 +95,11 @@ def fetch_graph(accounts, limit, ig_id, token):
         resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
                             params={"fields": fields, "access_token": token},
                             timeout=60)
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError:
+            errors[account.lower()] = "не-JSON ответ от Meta Graph API"
+            continue
         if "error" in data:
             err = data["error"]
             if err.get("code") == 190:
@@ -120,13 +124,18 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
     records, errors = [], {}
     if ig.get("accounts"):
         accounts = ig["accounts"]
-        if ig.get("source", "apify") == "apify":
-            _require_env(env, ["APIFY_TOKEN"])
-            recs, errs = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
-        else:
-            _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
-            recs, errs = fetch_graph(accounts, limit,
-                                     env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
+        try:
+            if ig.get("source", "apify") == "apify":
+                _require_env(env, ["APIFY_TOKEN"])
+                recs, errs = fetch_apify(accounts, limit, env["APIFY_TOKEN"])
+            else:
+                _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
+                recs, errs = fetch_graph(accounts, limit,
+                                         env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
+        except requests.RequestException as exc:
+            # Сеть/лимиты Apify или Graph не должны ронять Telegram-часть рана.
+            recs, errs = [], {a.lower(): "Instagram недоступен: {}".format(exc)
+                             for a in accounts}
         records += recs
         common.save_posts(con, recs)
         for a in accounts:

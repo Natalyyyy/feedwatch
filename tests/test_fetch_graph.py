@@ -45,6 +45,38 @@ def test_unavailable_account_collected(monkeypatch):
     assert records == [] and "ghost" in errors
 
 
+class NonJsonResp:
+    """Task 4: resp.json() падает голым ValueError на не-JSON ответе
+    (например HTML страница ошибки от Graph API)."""
+    def json(self):
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+
+def test_fetch_graph_non_json_response_is_collected_as_error(monkeypatch):
+    monkeypatch.setattr(fetch.requests, "get", lambda *a, **kw: NonJsonResp())
+    records, errors = fetch.fetch_graph(["acc"], 12, "ig123", "tok")
+    assert records == []
+    assert "acc" in errors and "JSON" in errors["acc"]
+
+
+def test_fetch_graph_non_json_does_not_block_other_accounts(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return NonJsonResp()
+        return FakeResp({"business_discovery": {"media": {"data": [
+            {"id": "1", "caption": "ok", "timestamp": "2026-07-19T10:00:00+0000",
+             "like_count": 1, "comments_count": 1, "permalink": "https://x/"},
+        ]}}})
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    records, errors = fetch.fetch_graph(["broken", "acc"], 12, "ig123", "tok")
+    assert "broken" in errors
+    assert len(records) == 1 and records[0]["account"] == "acc"
+
+
 def test_run_fetch_missing_apify_token_raises_config_error(monkeypatch, con):
     # run_fetch делает `env = env or common.load_env()` — пустой env={} falsy,
     # поэтому без подмены load_env тест читал бы реальный .env с диска и мог
@@ -109,3 +141,52 @@ def test_run_fetch_tgstat_requires_token(con):
 def test_run_fetch_no_platforms(con):
     with pytest.raises(fetch.ConfigError):
         fetch.run_fetch(5, cfg=dict(common.DEFAULTS), env={}, con=con)
+
+
+def test_run_fetch_ig_network_error_does_not_block_telegram(monkeypatch, con):
+    """Task 3: RequestException из Apify/Graph раньше ронял весь run_fetch,
+    включая TG-каналы. Платформы должны падать независимо."""
+    import requests
+
+    def boom(*a, **kw):
+        raise requests.HTTPError("402 Payment Required")
+
+    monkeypatch.setattr(fetch, "fetch_apify", boom)
+    monkeypatch.setattr(fetch.fetch_tg, "fetch_web",
+                        lambda channels, limit, session=None: (
+                            [{"post_id": "tg:ch:1", "account": "ch", "platform": "telegram",
+                              "caption": "x", "posted_at": common.now_utc().isoformat(),
+                              "likes": 3, "comments": None, "views": 50,
+                              "permalink": "https://t.me/ch/1"}],
+                            {}, {}))
+    cfg = dict(common.DEFAULTS,
+              instagram={"source": "apify", "accounts": ["acc"]},
+              telegram={"source": "web", "channels": ["ch"]})
+
+    records, errors = fetch.run_fetch(12, cfg=cfg, env={"APIFY_TOKEN": "t"}, con=con)
+
+    # TG собрался несмотря на упавший IG
+    assert len(common.latest_metrics(con, "ch", platform="telegram")) == 1
+    assert any(r["platform"] == "telegram" for r in records)
+    # IG-ошибка попала в отчёт человекочитаемым сообщением, не traceback'ом
+    assert ("instagram", "acc") in errors
+    assert "Instagram" in errors[("instagram", "acc")]
+    row = con.execute(
+        "SELECT last_error FROM account_status WHERE platform='instagram' AND account='acc'"
+    ).fetchone()
+    assert row["last_error"]
+
+
+def test_run_fetch_ig_token_expired_still_propagates(monkeypatch, con):
+    """Изоляция ловит только requests.RequestException — TokenExpiredError
+    должен по-прежнему всплывать наверх (report.py его обрабатывает отдельной
+    веткой с другим сообщением)."""
+    def boom(*a, **kw):
+        raise fetch.TokenExpiredError("Error validating access token")
+
+    monkeypatch.setattr(fetch, "fetch_graph", boom)
+    cfg = dict(common.DEFAULTS, instagram={"source": "graph", "accounts": ["acc"]})
+
+    with pytest.raises(fetch.TokenExpiredError):
+        fetch.run_fetch(12, cfg=cfg,
+                        env={"IG_ACCESS_TOKEN": "t", "IG_BUSINESS_ID": "1"}, con=con)
