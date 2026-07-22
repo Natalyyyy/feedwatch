@@ -38,7 +38,8 @@ def stats_line(p):
             stats += " ❤️ {}".format(p["likes"])
         return stats
     likes = "—" if p["likes"] is None else p["likes"]
-    stats = "❤️ {} 💬 {}".format(likes, p["comments"])
+    comments = "—" if p["comments"] is None else p["comments"]
+    stats = "❤️ {} 💬 {}".format(likes, comments)
     if p.get("views"):
         stats += " ▶️ {}".format(p["views"])
     return stats
@@ -102,6 +103,13 @@ FETCH_ERROR_MSG = (
     "кредитами источника). Проверь .env и баланс источника."
 )
 
+TELEGRAM_ENV_KEYS = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+
+
+def missing_telegram_env(env):
+    """Каких из TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не хватает в .env, для --send."""
+    return [k for k in TELEGRAM_ENV_KEYS if not env.get(k)]
+
 
 def main():
     ap = argparse.ArgumentParser(description="Отчёты feedwatch")
@@ -112,19 +120,27 @@ def main():
 
     cfg, env, con = common.load_config(), common.load_env(), common.connect()
 
+    if args.send:
+        missing = missing_telegram_env(env)
+        if missing:
+            msg = "⚠️ feedwatch: не найден{} {} в .env — заполни по образцу .env.example".format(
+                "ы" if len(missing) > 1 else "", " и ".join(missing))
+            print(msg, file=sys.stderr)
+            sys.exit(1)
+
     if not args.no_fetch:
         limit = cfg["fetch_limit_pulse"] if args.mode == "pulse" else cfg["fetch_limit_weekly"]
         try:
             fetch.run_fetch(limit, cfg=cfg, env=env, con=con, subscribers=(args.mode == "weekly"))
         except fetch.TokenExpiredError:
-            if args.send and env.get("TELEGRAM_BOT_TOKEN"):
+            if args.send:
                 telegram.send(TOKEN_EXPIRED_MSG, env["TELEGRAM_BOT_TOKEN"],
                               env["TELEGRAM_CHAT_ID"])
             print(TOKEN_EXPIRED_MSG, file=sys.stderr)
             sys.exit(1)
         except (fetch.ConfigError, requests.RequestException) as exc:
             msg = str(exc) if isinstance(exc, fetch.ConfigError) else FETCH_ERROR_MSG
-            if args.send and env.get("TELEGRAM_BOT_TOKEN"):
+            if args.send:
                 telegram.send(msg, env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"])
             print(msg, file=sys.stderr)
             sys.exit(1)
@@ -135,13 +151,17 @@ def main():
             print("Тихо: сигналов нет.")
             return
         text = format_pulse(signals)
-        common.mark_alerted(con, [s["post_id"] for s in signals])
     else:
         text = build_weekly(con, cfg)  # Task 8
 
     print(text)
-    if args.send and env.get("TELEGRAM_BOT_TOKEN"):
+    if args.send:
         telegram.send(text, env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"])
+        # Метим как алерченные только после успешной отправки — если send
+        # упадёт, исключение уйдёт выше и сигналы останутся неотмеченными,
+        # чтобы не потерять их навсегда.
+        if args.mode == "pulse":
+            common.mark_alerted(con, [s["post_id"] for s in signals])
 
 
 def weekly_data(con, cfg, platform, accounts, now=None):
