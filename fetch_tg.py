@@ -1,6 +1,7 @@
 """Сбор постов Telegram-каналов: веб-превью t.me/s (без ключей) или TGStat API."""
 import html as html_module
 import re
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -116,6 +117,7 @@ def fetch_web(channels, limit, session=None):
 
 
 TGSTAT_BASE = "https://api.tgstat.ru"
+TGSTAT_REQUEST_DELAY = 0.5  # сек между каналами — не долбить лимиты тарифа
 
 
 class TGStatError(Exception):
@@ -152,7 +154,9 @@ def fetch_tgstat(channels, limit, token, subscribers=False):
     """Посты каналов из TGStat API (лёгкий режим: только channels/posts
     [+ channels/get при subscribers=True]). → (records, errors, subs)."""
     records, errors, subs = [], {}, {}
-    for channel in channels:
+    for i, channel in enumerate(channels):
+        if i > 0:
+            time.sleep(TGSTAT_REQUEST_DELAY)
         key = channel.lower()
         try:
             resp = _tgstat_request(

@@ -62,6 +62,30 @@ POSTS_ONE_MALFORMED = {"status": "ok", "response": {"items": [
 ]}}
 
 
+def test_fetch_tgstat_sleeps_between_channels_not_before_first(monkeypatch):
+    """Task 7: пауза между каналами, чтобы не долбить лимиты TGStat, но без
+    лишней задержки перед самым первым запросом."""
+    monkeypatch.setattr(fetch_tg.requests, "get",
+                        lambda url, params=None, timeout=None: FakeResp(POSTS_OK))
+    sleeps = []
+    monkeypatch.setattr(fetch_tg.time, "sleep", lambda s: sleeps.append(s))
+
+    fetch_tg.fetch_tgstat(["ch1", "ch2", "ch3"], 25, "tok")
+
+    assert sleeps == [fetch_tg.TGSTAT_REQUEST_DELAY] * 2
+
+
+def test_fetch_tgstat_single_channel_no_sleep(monkeypatch):
+    monkeypatch.setattr(fetch_tg.requests, "get",
+                        lambda url, params=None, timeout=None: FakeResp(POSTS_OK))
+    sleeps = []
+    monkeypatch.setattr(fetch_tg.time, "sleep", lambda s: sleeps.append(s))
+
+    fetch_tg.fetch_tgstat(["ch1"], 25, "tok")
+
+    assert sleeps == []
+
+
 def test_fetch_tgstat_skips_malformed_item(monkeypatch):
     monkeypatch.setattr(fetch_tg.requests, "get",
                         lambda url, params=None, timeout=None: FakeResp(POSTS_ONE_MALFORMED))
