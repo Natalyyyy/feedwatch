@@ -74,6 +74,15 @@ def test_tg_pulse_triggers_on_views(con):
     assert signals[0]["metric"] == "views" and signals[0]["ratio"] == 3.0
 
 
+def test_stats_line_ig_shows_dash_for_missing_comments():
+    """Task 6: '💬 None' раньше протекало в отчёт, когда comments_count не
+    пришёл (например, из Meta Graph API) — должно быть тире, как для лайков."""
+    p = {"platform": "instagram", "likes": None, "comments": None, "views": None}
+    assert report.stats_line(p) == "❤️ — 💬 —"
+    p2 = {"platform": "instagram", "likes": 10, "comments": None, "views": None}
+    assert report.stats_line(p2) == "❤️ 10 💬 —"
+
+
 def test_format_pulse_sections_when_both_platforms():
     ig = {"post_id": "p", "account": "acc", "platform": "instagram", "caption": "",
           "posted_at": "2026-07-20T00:00:00+00:00", "permalink": "u1",
