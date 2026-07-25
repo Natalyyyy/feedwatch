@@ -116,9 +116,18 @@ def main():
     ap.add_argument("mode", choices=["pulse", "weekly"])
     ap.add_argument("--send", action="store_true", help="отправить в Telegram")
     ap.add_argument("--no-fetch", action="store_true", help="только по данным из базы")
+    ap.add_argument("--out", metavar="ФАЙЛ",
+                    help="записать отчёт в файл (для чтения другими инструментами)")
+    ap.add_argument("--config", metavar="ФАЙЛ",
+                    help="конфиг вместо config.json — для второго набора аккаунтов")
+    ap.add_argument("--db", metavar="ФАЙЛ",
+                    help="база вместо data/feedwatch.db; своему набору — своя база")
     args = ap.parse_args()
 
-    cfg, env, con = common.load_config(), common.load_env(), common.connect()
+    # Путь передаём, только если он задан: иначе common сам подставит умолчание.
+    cfg = common.load_config(args.config) if args.config else common.load_config()
+    con = common.connect(args.db) if args.db else common.connect()
+    env = common.load_env()
 
     if args.send:
         missing = missing_telegram_env(env)
@@ -155,6 +164,10 @@ def main():
         text = build_weekly(con, cfg)  # Task 8
 
     print(text)
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text, encoding="utf-8")
     if args.send:
         telegram.send(text, env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"])
         # Метим как алерченные только после успешной отправки — если send

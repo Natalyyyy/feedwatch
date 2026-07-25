@@ -117,6 +117,38 @@ def test_main_does_not_mark_alerted_when_send_fails(monkeypatch, con):
     assert not common.was_alerted(con, "hit")
 
 
+def test_weekly_out_writes_report_to_file(monkeypatch, con, tmp_path, capsys):
+    """--out кладёт отчёт файлом: планёрка читает волт, а не телеграм."""
+    _stub_env(monkeypatch, con)
+    monkeypatch.setattr(report.common, "load_config", lambda: _pulse_cfg())
+    # build_weekly зовёт headless Claude через subprocess — в тестах не ходим наружу
+    monkeypatch.setattr(report, "claude_summary", lambda *a, **kw: "")
+    _seed_signal(con)
+    target = tmp_path / "отчёт.md"
+    monkeypatch.setattr("sys.argv",
+                        ["report.py", "weekly", "--no-fetch", "--out", str(target)])
+
+    report.main()
+
+    assert target.read_text(encoding="utf-8") == capsys.readouterr().out.strip()
+
+
+def test_out_creates_missing_parent_directory(monkeypatch, con, tmp_path):
+    """Папка трендвотчинга в волте может ещё не существовать."""
+    _stub_env(monkeypatch, con)
+    monkeypatch.setattr(report.common, "load_config", lambda: _pulse_cfg())
+    # build_weekly зовёт headless Claude через subprocess — в тестах не ходим наружу
+    monkeypatch.setattr(report, "claude_summary", lambda *a, **kw: "")
+    _seed_signal(con)
+    target = tmp_path / "нет" / "такой" / "папки" / "отчёт.md"
+    monkeypatch.setattr("sys.argv",
+                        ["report.py", "weekly", "--no-fetch", "--out", str(target)])
+
+    report.main()
+
+    assert target.exists()
+
+
 def test_main_send_requires_chat_id_before_anything_else(monkeypatch, con):
     """Task 5: --send с TOKEN, но без CHAT_ID — внятная ошибка и выход ДО
     fetch/mark_alerted, а не голый KeyError на телеграм-отправке."""

@@ -6,3 +6,6 @@ venv/
 .pytest_cache/
 .DS_Store
 .superpowers/
+
+# Личные наборы аккаунтов — не для публичного репозитория
+config.nisha-*.json
