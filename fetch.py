@@ -1,6 +1,7 @@
 """Сбор постов feedwatch (Instagram: Apify/Meta Graph API; Telegram: web/TGStat) → SQLite."""
 import argparse
 import sys
+import time
 
 import requests
 
@@ -84,6 +85,28 @@ def normalize_graph(account, media):
         "views": None,  # business_discovery не отдаёт просмотры по чужим аккаунтам
         "permalink": media["permalink"],
     }
+
+
+DEBUG_TOKEN_URL = "https://graph.facebook.com/v21.0/debug_token"
+
+
+def token_days_left(token, now=None):
+    """Сколько дней осталось токену Meta. None — бессрочный или не выяснили.
+
+    Токен на 60 дней сам не продлевается: протухнув, он не роняет прогон, а
+    тихо перестаёт отдавать чужие аккаунты. Поэтому спрашиваем срок заранее.
+    Сама проверка сервисная — её сбой не должен мешать сбору данных.
+    """
+    now = now if now is not None else time.time()
+    try:
+        payload = requests.get(DEBUG_TOKEN_URL, params={
+            "input_token": token, "access_token": token}, timeout=30).json()
+    except (requests.RequestException, ValueError):
+        return None
+    expires_at = (payload.get("data") or {}).get("expires_at")
+    if not expires_at:          # 0 или отсутствует — бессрочный
+        return None
+    return int((expires_at - now) // 86400)
 
 
 def fetch_graph(accounts, limit, ig_id, token):
