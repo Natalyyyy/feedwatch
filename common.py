@@ -104,7 +104,10 @@ CREATE TABLE IF NOT EXISTS posts (
     platform TEXT NOT NULL DEFAULT 'instagram',
     caption TEXT,
     posted_at TEXT NOT NULL,
-    permalink TEXT NOT NULL
+    permalink TEXT NOT NULL,
+    media_type TEXT,
+    media_url TEXT,
+    transcript TEXT
 );
 CREATE TABLE IF NOT EXISTS snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,6 +141,11 @@ def _migrate(con):
     cols = {r["name"] for r in con.execute("PRAGMA table_info(posts)")}
     if "platform" not in cols:
         con.execute("ALTER TABLE posts ADD COLUMN platform TEXT NOT NULL DEFAULT 'instagram'")
+    # media_url живёт на CDN Meta считанные часы — колонки добавлены 08.08.2026,
+    # чтобы reels.py успевал скачать видео в том же прогоне, что и сбор.
+    for name in ("media_type", "media_url", "transcript"):
+        if name not in cols:
+            con.execute(f"ALTER TABLE posts ADD COLUMN {name} TEXT")
     cols = {r["name"] for r in con.execute("PRAGMA table_info(account_status)")}
     if "platform" not in cols:
         con.execute("ALTER TABLE account_status RENAME TO account_status_legacy")
@@ -152,11 +160,13 @@ def save_posts(con, records, fetched_at=None):
     fetched = (fetched_at or now_utc()).isoformat() if not isinstance(fetched_at, str) else fetched_at
     for r in records:
         con.execute(
-            "INSERT INTO posts (post_id, account, platform, caption, posted_at, permalink) "
-            "VALUES (?,?,?,?,?,?) "
-            "ON CONFLICT(post_id) DO UPDATE SET caption=excluded.caption",
+            "INSERT INTO posts (post_id, account, platform, caption, posted_at, permalink, "
+            "media_type, media_url) VALUES (?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(post_id) DO UPDATE SET caption=excluded.caption, "
+            # media_url перезаписываем всегда: старая ссылка уже мертва, свежая — рабочая.
+            "media_type=excluded.media_type, media_url=excluded.media_url",
             (r["post_id"], r["account"], r.get("platform", "instagram"), r["caption"],
-             r["posted_at"], r["permalink"]),
+             r["posted_at"], r["permalink"], r.get("media_type"), r.get("media_url")),
         )
         con.execute(
             "INSERT INTO snapshots (post_id, fetched_at, likes, comments, views) "

@@ -84,6 +84,10 @@ def normalize_graph(account, media):
         "comments": media.get("comments_count"),
         "views": None,  # business_discovery не отдаёт просмотры по чужим аккаунтам
         "permalink": media["permalink"],
+        "media_type": media.get("media_type"),
+        # Прямая ссылка на файл. Отдаётся не всегда и живёт на CDN считанные
+        # часы — reels.py качает по ней в том же прогоне, позже она мертва.
+        "media_url": media.get("media_url"),
     }
 
 
@@ -113,7 +117,8 @@ def fetch_graph(accounts, limit, ig_id, token):
     records, errors = [], {}
     for account in accounts:
         fields = ("business_discovery.username({}){{media.limit({})"
-                  "{{id,caption,like_count,comments_count,permalink,timestamp}}}}"
+                  "{{id,caption,like_count,comments_count,permalink,timestamp,"
+                  "media_type,media_url}}}}"
                   ).format(account, limit)
         resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
                             params={"fields": fields, "access_token": token},
