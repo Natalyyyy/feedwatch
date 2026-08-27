@@ -274,7 +274,13 @@ def claude_summary(per_account, prompt_path):
     prompt = Path(prompt_path).read_text(encoding="utf-8") + "\n\n" + "\n".join(digest)
     try:
         result = subprocess.run(
-            ["claude", "-p", "--output-format", "text"],
+            # Модель прибита явно (27.08.2026). Без флага CLI берёт свой
+            # дефолт, а он разный на разных машинах и меняется с версией: на
+            # Pi он был claude-opus-4-8, на Маке claude-opus-5. Опус, а не
+            # хайку, — потому что де-факто прогон и ехал на опусе, и это
+            # сохранение поведения, а не выбор тарифа заново.
+            ["claude", "-p", "--output-format", "text",
+             "--model", "claude-opus-5"],
             input=prompt, capture_output=True, text=True, timeout=300,
         )
         if result.returncode == 0 and result.stdout.strip():
