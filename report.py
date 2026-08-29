@@ -1,4 +1,5 @@
 """Отчёты feedwatch: ежедневный пульс и еженедельный разбор."""
+import os
 import argparse
 import subprocess
 import sys
@@ -10,6 +11,26 @@ import requests
 import common
 import fetch
 import telegram
+
+
+# --- модель ходит без токенов (security-ревью 29.08.2026) -------------------
+# В окружении прогона лежат ключи, и процесс модели наследовал их все: инъекция
+# из недоверенного текста, дотянувшаяся до исполнения, забирала их одной
+# строкой. Модели они не нужны — сеть за неё делают скрипты.
+# CLAUDE_CODE_OAUTH_TOKEN намеренно НЕ снимаем: им логинится сам CLI.
+_СЕКРЕТЫ_МИМО_МОДЕЛИ = (
+    "TELEGRAM_BOT_TOKEN", "TELEGRAM_TOKEN", "TELEGRAPH_TOKEN", "TGSTAT_TOKEN",
+    "APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY", "HEALTH_BOT_TOKEN",
+    "GCAL_SA", "DASHBOARD_AUTH", "GRANOLA_API_KEY",
+)
+
+
+def _env_без_секретов(base=None):
+    env = dict(base if base is not None else os.environ)
+    for имя in _СЕКРЕТЫ_МИМО_МОДЕЛИ:
+        env.pop(имя, None)
+    return env
+
 
 
 def format_ratio(value, median):
@@ -280,8 +301,13 @@ def claude_summary(per_account, prompt_path):
             # хайку, — потому что де-факто прогон и ехал на опусе, и это
             # сохранение поведения, а не выбор тарифа заново.
             ["claude", "-p", "--output-format", "text",
-             "--model", "claude-opus-5"],
-            input=prompt, capture_output=True, text=True, timeout=300,
+             "--model", "claude-opus-5",
+             # Набор инструментов пустой: подписи чужих аккаунтов уже в
+             # промпте, файлы модели не нужны (security-ревью 29.08.2026).
+             "--tools", "",
+             "--disallowedTools", "Bash,Monitor,BashOutput,KillShell,Task,Agent,WebFetch,WebSearch,NotebookEdit,Read,Write,Edit"],
+            input=prompt, env=_env_без_секретов(),
+            capture_output=True, text=True, timeout=300,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
