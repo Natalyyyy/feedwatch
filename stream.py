@@ -54,8 +54,12 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 def _archive_path(path: Path, date: str) -> Path:
-    """Архив по годам рядом с живым файлом: «поток.md» → «поток – 2026.md»."""
-    return path.with_name("{} – {}{}".format(path.stem, date[:4], path.suffix))
+    """Архив по годам — в подпапке `archive/` рядом с живым файлом, а не файлом-
+    соседом: «поток.md» → «archive/поток – 2026.md». Волт требует «один поток =
+    один файл» в живой папке (CLAUDE.md → «Автогенерируемые потоки»); файл-сосед
+    с датой в имени выглядит как второй живой поток и путает — 02.09.2026 так
+    нашлись два файла инстаграм-ниши в trendwatching, неотличимые на вид."""
+    return path.parent / "archive" / "{} – {}{}".format(path.stem, date[:4], path.suffix)
 
 
 def prepend_block(path, title: str, date: str, body: str, keep: int = 0) -> Path:

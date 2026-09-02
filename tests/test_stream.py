@@ -104,11 +104,32 @@ def test_старые_блоки_уезжают_в_архив(tmp_path: Path):
                       keep=2)
 
     живой = path.read_text(encoding="utf-8")
-    архив = (tmp_path / "поток – 2026.md").read_text(encoding="utf-8")
+    архив = (tmp_path / "archive" / "поток – 2026.md").read_text(encoding="utf-8")
 
     assert живой.count("## ") == 2
     assert "## 2026-08-05" in живой and "## 2026-08-04" in живой
     assert "прогон 1" in архив and "прогон 3" in архив
+
+
+def test_архив_живёт_в_подпапке_а_не_рядом_с_потоком(tmp_path: Path):
+    """Волт требует «один поток = один файл» в живой папке (CLAUDE.md →
+    «Автогенерируемые потоки»): 02.09.2026 в trendwatching обнаружились сразу
+    ДВА файла инстаграм-ниши — `... .md` и `... – 2026.md` рядом, — и по виду
+    не отличить архив от второго живого потока. Годовой архив обязан уезжать
+    в `archive/`-подпапку (та же конвенция, что и для остального волта), а не
+    лежать файлом-соседом с датой в имени."""
+    path = tmp_path / "поток.md"
+    for день in range(1, 6):
+        prepend_block(path, TITLE, "2026-08-0%d" % день, "прогон %d\n" % день,
+                      keep=2)
+
+    записи_рядом_с_потоком = [
+        p.name for p in tmp_path.iterdir() if p.is_file() and p.name != "поток.md"
+    ]
+    assert записи_рядом_с_потоком == [], (
+        "рядом с живым потоком не должно быть других файлов: %r" % записи_рядом_с_потоком
+    )
+    assert (tmp_path / "archive" / "поток – 2026.md").exists()
 
 
 def test_архив_не_теряет_ранее_сложенное(tmp_path: Path):
@@ -118,7 +139,7 @@ def test_архив_не_теряет_ранее_сложенное(tmp_path: Pa
         prepend_block(path, TITLE, "2026-08-0%d" % день, "прогон %d\n" % день,
                       keep=2)
 
-    архив = (tmp_path / "поток – 2026.md").read_text(encoding="utf-8")
+    архив = (tmp_path / "archive" / "поток – 2026.md").read_text(encoding="utf-8")
 
     assert архив.count("## ") == 5
     assert "прогон 1" in архив
@@ -132,6 +153,7 @@ def test_без_keep_ничего_не_обрезается(tmp_path: Path):
 
     assert path.read_text(encoding="utf-8").count("## ") == 5
     assert not (tmp_path / "поток – 2026.md").exists()
+    assert not (tmp_path / "archive" / "поток – 2026.md").exists()
 
 
 def test_cli_принимает_keep(tmp_path: Path):
@@ -146,4 +168,4 @@ def test_cli_принимает_keep(tmp_path: Path):
                             str(report), "--keep", "2"]) == 0
 
     assert out.read_text(encoding="utf-8").count("## ") == 2
-    assert (tmp_path / "поток – 2026.md").exists()
+    assert (tmp_path / "archive" / "поток – 2026.md").exists()
