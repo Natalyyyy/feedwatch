@@ -34,10 +34,14 @@ vault_end() {
   fi
 }
 
+# Return codes pass through: 2 = unmerged index without rebase (autostash/merge),
+# 1 = other failure. Quarantine backups are retained outside the vault.
 vault_pull_safe() {
   "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault "$1" pull
 }
 
+# Supply exact filenames, including deleted tracked files; directories and
+# glob/magic pathspecs are errors. An unrelated staged change also blocks publish.
 vault_publish_safe() {
   local root="$1" message="$2"; shift 2
   "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault "$root" publish --message "$message" -- "$@"
