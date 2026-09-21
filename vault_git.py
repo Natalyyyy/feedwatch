@@ -330,6 +330,37 @@ def publish(vault, message, paths):
     raise RuntimeError('push failed after 2 attempts; local commit retained')
 
 
+def changed_paths(vault, paths):
+    """Список публикации с каталогами → точные файлы для publish().
+
+    Каталог раскрывается в изменённые под ним файлы: новые (включая новые подпапки),
+    правленые и удалённые; игнорируемые не попадают. Точный путь проходит как есть,
+    если файл есть или был в индексе/HEAD. Отсутствующий путь пропускается: прогон по
+    одному каналу не трогает каталог другого, это штатно. Порядок сохраняется, дубли
+    убираются. Шаблоны, абсолютные пути и выход за волт отбиваются до вызова git.
+    """
+    vault = Path(vault)
+    known = names(vault, 'ls-files', '-z') | set(tree_entries(vault, 'HEAD'))
+    out = []
+    for name in (os.fspath(name) for name in paths):
+        name = name.rstrip('/') if name not in ('', '/') else name
+        path = Path(name)
+        if (not name or path.is_absolute() or any(part in ('', '.', '..') for part in name.split('/'))
+                or name.startswith(':') or any(char in name for char in '*?[]')
+                or '.git' in path.parts):
+            raise ValueError('exact vault-relative file paths required: '+repr(name))
+        if (vault/path).is_dir():
+            # -z: иначе git эскейпит кириллицу и берёт в кавычки имена с пробелами;
+            # -uall: иначе новая подпапка приходит каталогом; --no-renames: иначе
+            # переименование даёт вторую запись со старым именем без кода статуса.
+            raw = git(vault, 'status', '--porcelain=v1', '-z', '-uall', '--no-renames',
+                      '--', name, binary=True).stdout
+            out += [os.fsdecode(entry[3:]) for entry in raw.split(b'\0') if entry]
+        elif os.path.lexists(vault/path) or name in known:
+            out.append(name)
+    return list(dict.fromkeys(out))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vault', required=True)
@@ -338,6 +369,9 @@ def main():
     command = sub.add_parser('acquire-fd')
     command.add_argument('fd', type=int)
     command = sub.add_parser('publish')
+    command.add_argument('--message', required=True)
+    command.add_argument('paths', nargs='+')
+    command = sub.add_parser('publish-changed')
     command.add_argument('--message', required=True)
     command.add_argument('paths', nargs='+')
     command = sub.add_parser('run')
@@ -356,6 +390,9 @@ def main():
         with locked() as fd:
             if args.operation == 'pull': pull(args.vault)
             elif args.operation == 'publish': publish(args.vault, args.message, args.paths)
+            elif args.operation == 'publish-changed':
+                paths = changed_paths(args.vault, [p for p in args.paths if p != '--'])
+                if paths: publish(args.vault, args.message, paths)
             else:
                 cmd = args.command
                 if cmd[:1] == ['--']: cmd = cmd[1:]

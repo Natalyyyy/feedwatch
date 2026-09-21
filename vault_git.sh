@@ -46,3 +46,11 @@ vault_publish_safe() {
   local root="$1" message="$2"; shift 2
   "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault "$root" publish --message "$message" -- "$@"
 }
+
+# Same, but directories expand into their changed files (new, edited, deleted;
+# ignored ones skipped) and missing paths are skipped. Nothing changed = success
+# without a commit. For jobs that own a whole output directory in the vault.
+vault_publish_changed() {
+  local root="$1" message="$2"; shift 2
+  "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault "$root" publish-changed --message "$message" -- "$@"
+}
