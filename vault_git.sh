@@ -15,9 +15,12 @@ vault_begin() {
     VAULT_TX_DEPTH=1; return 0
   fi
   exec 198>>"$VAULT_LOCK_PATH" || return 1
-  if ! VAULT_LOCK_WAIT_SEC="$VAULT_LOCK_WAIT_SEC" "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault . acquire-fd 198; then
+  # Код помощника проходит наверх как есть: 75 — замок занят, тик пропущен.
+  VAULT_LOCK_WAIT_SEC="$VAULT_LOCK_WAIT_SEC" "$VAULT_PYTHON" "$VAULT_GIT_HELPER" --vault . acquire-fd 198
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
     exec 198>&-
-    return 1
+    return "$rc"
   fi
   export VAULT_LOCK_FD=198 VAULT_LOCK_PATH
   VAULT_TX_DEPTH=1

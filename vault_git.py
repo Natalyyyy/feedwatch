@@ -12,6 +12,10 @@ import sys
 import time
 
 
+# Занятый замок общего волта: тик пропущен, а не провален (27.09.2026).
+LOCK_BUSY_EXIT = 75
+
+
 @contextmanager
 def locked(path=None, wait=None):
     path = Path(path or os.environ.get('VAULT_LOCK_PATH', str(Path.home()/'.vault-git.lock')))
@@ -400,6 +404,12 @@ def main():
                 env = dict(os.environ, VAULT_LOCK_FD=str(fd))
                 return subprocess.run(cmd, env=env, pass_fds=(fd,)).returncode
         return 0
+    except TimeoutError as exc:
+        # Занятый замок — не поломка: тик пропущен, работа доедет следующим.
+        # 75 = EX_TEMPFAIL; юниты на Пи помечены SuccessExitStatus=75, иначе
+        # каждое пересечение с планёркой писалось в файл поломок как «упало».
+        print('SKIP: vault transaction: '+str(exc), file=sys.stderr)
+        return LOCK_BUSY_EXIT
     except AutostashConflict as exc:
         print('ERROR: vault transaction: '+str(exc), file=sys.stderr)
         return 2
