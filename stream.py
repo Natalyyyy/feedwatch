@@ -62,13 +62,20 @@ def _archive_path(path: Path, date: str) -> Path:
     return path.parent / "archive" / "{} – {}{}".format(path.stem, date[:4], path.suffix)
 
 
-def prepend_block(path, title: str, date: str, body: str, keep: int = 0) -> Path:
+def prepend_block(path, title: str, date: str, body: str, keep: int = 0) -> list:
     """Кладёт прогон за `date` в файл-поток, свежие блоки выше старых.
+
+    Возвращает ВСЕ записанные файлы: живой поток и, если случилась ротация,
+    годовые архивы. Раньше возвращался только поток, а `nisha.sh` коммитит
+    ровно то, что ему назвали, — правка архива оставалась в волте на Пи
+    незакоммиченной, и каждое утро приходила строка «в волте остались
+    незакоммиченные правки» (26 и 27.09.2026).
 
     Повторный прогон за ту же дату заменяет блок, а не добавляет второй:
     ручной перезапуск после сбоя — штатная ситуация, а дубль сломал бы и
     чтение планёркой, и чтение глазами.
     """
+    записанные = []
     path = Path(path)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     blocks = [b for b in _split_blocks(text) if b[0] != date]
@@ -90,9 +97,11 @@ def prepend_block(path, title: str, date: str, body: str, keep: int = 0) -> Path
             слитые.update({b[0]: b[1] for b in свежие})
             _write_atomic(arc, render("{} — архив {}".format(title, год),
                                       sorted(слитые.items(), reverse=True)))
+            записанные.append(arc)
 
     _write_atomic(path, render(title, blocks))
-    return path
+    записанные.append(path)
+    return записанные
 
 
 def main(argv=None) -> int:
@@ -126,7 +135,10 @@ def main(argv=None) -> int:
     body = src.read_text(encoding="utf-8")
     # Шапка отчёта («# ...») внутри блока лишняя: её роль играет «## дата».
     body = re.sub(r"\A#\s+[^\n]*\n+", "", body)
-    prepend_block(out, title, date, body, keep=keep)
+    # Печатаем ВСЕ записанные файлы: вызывающий коммитит ровно то, что ему
+    # назвали, и молчание про архив ротации оставляло его правку в волте.
+    for записанный in prepend_block(out, title, date, body, keep=keep):
+        print(записанный)
     return 0
 
 

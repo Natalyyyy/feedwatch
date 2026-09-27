@@ -72,7 +72,8 @@ case "$1" in
   *report.py) out=""; while [ $# -gt 0 ]; do [ "$1" = "--out" ] && out="$2"; shift; done
               printf 'отчёт\\n' > "$out"; exit 0 ;;
   *reels.py)  exit 1 ;;                        # расшифровка осекается — штатно
-  *stream.py) printf '## блок\\nотчёт\\n' > "{vault}/{ПОТОК}"; exit 0 ;;
+  *stream.py) printf '## блок\\nотчёт\\n' > "{vault}/{ПОТОК}"
+              printf '%s\\n' "{vault}/{ПОТОК}"; exit 0 ;;
 esac
 exit 0
 """, encoding="utf-8")
@@ -148,3 +149,30 @@ def test_отказ_push_роняет_джобу(стенд):
     res = _прогон(стенд)
 
     assert res.returncode != 0
+
+
+АРХИВ = ("projects/channel/trendwatching/archive/"
+         "{channel} {source} инстаграм-ниша биз – 2026.md")
+
+
+def test_архив_ротации_уезжает_вместе_с_потоком(стенд):
+    """Ошибка: stream.py при ротации пишет ещё и годовой архив, а публиковался
+    только живой поток. Правка архива оставалась в клоне на Пи навсегда, и
+    каждое утро приходила строка «в волте остались незакоммиченные правки»
+    (26 и 27.09.2026), на которой отваливаются следующие git pull."""
+    script_dir, vault, tmp_path = стенд
+    питон = script_dir / "venv" / "bin" / "python"
+    # Тот же stream.py, но с ротацией: пишет и поток, и архив, и печатает оба.
+    питон.write_text(питон.read_text(encoding="utf-8").replace(
+        f"""  *stream.py) printf '## блок\\nотчёт\\n' > "{vault}/{ПОТОК}"
+              printf '%s\\n' "{vault}/{ПОТОК}"; exit 0 ;;""",
+        f"""  *stream.py) printf '## блок\\nотчёт\\n' > "{vault}/{ПОТОК}"
+              mkdir -p "{vault}/projects/channel/trendwatching/archive"
+              printf '## старый блок\\nстарое\\n' > "{vault}/{АРХИВ}"
+              printf '%s\\n%s\\n' "{АРХИВ}" "{ПОТОК}"; exit 0 ;;"""),
+        encoding="utf-8")
+
+    res = _прогон(стенд)
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert _уехало(vault) == sorted([АРХИВ, ПОТОК])

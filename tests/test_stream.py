@@ -169,3 +169,22 @@ def test_cli_принимает_keep(tmp_path: Path):
 
     assert out.read_text(encoding="utf-8").count("## ") == 2
     assert (tmp_path / "archive" / "поток – 2026.md").exists()
+
+
+def test_архив_называется_вызывающему_для_коммита(tmp_path: Path):
+    """error: архив писался молча, и `nisha.sh` коммитил только живой поток.
+
+    Незакоммиченная правка архива копилась в волте на Пи и каждое утро давала
+    строку «в волте остались незакоммиченные правки» (26 и 27.09.2026) — а
+    завтрашние `git pull` на ней отваливаются."""
+    path = tmp_path / "поток.md"
+    записанные = []
+    for день in range(1, 6):
+        записанные.append(prepend_block(path, TITLE, "2026-08-0%d" % день,
+                                        "прогон %d\n" % день, keep=2))
+
+    архив = tmp_path / "archive" / "поток – 2026.md"
+    assert архив.exists()
+    названные = {p for пути in записанные for p in (пути if isinstance(пути, (list, tuple)) else [пути])}
+    assert архив in названные, "архив не назван: %r" % (записанные,)
+    assert path in названные
