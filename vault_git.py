@@ -76,7 +76,38 @@ class AutostashConflict(RuntimeError):
     """Unmerged index without a rebase: possibly failed autostash application."""
 
 
+def heal_autostash(vault):
+    """Снять конфликт возврата автостэша, если стэш ничего не добавляет к HEAD.
+
+    12.10.2026 клон mars-bot простоял так четыре дня: каждый тик exit 2, хотя все
+    строки застрявшей правки уже были наверху. Лечим только этот случай: у каждого
+    конфликтного файла есть стадии 2 (HEAD) и 3 (стэш), и каждая непустая строка
+    стэша есть в версии HEAD. Иначе — как раньше, решает человек. Стэш не трогаем.
+    """
+    if rebasing(vault):
+        return
+    stages = {}
+    for record in git(vault, 'ls-files', '-u', '-z', binary=True).stdout.split(b'\0'):
+        if record:
+            meta, name = record.split(b'\t', 1)
+            _, oid, stage = meta.split()
+            stages.setdefault(os.fsdecode(name), {})[stage.decode('ascii')] = oid.decode('ascii')
+    if not stages:
+        return
+    for name, found in stages.items():
+        if '2' not in found or '3' not in found:
+            return
+        ours = set(git(vault, 'cat-file', 'blob', found['2'], binary=True).stdout.splitlines())
+        theirs = git(vault, 'cat-file', 'blob', found['3'], binary=True).stdout.splitlines()
+        if any(line.strip() and line not in ours for line in theirs):
+            return
+    git(vault, 'checkout', 'HEAD', '--', *stages)
+    print('vault: конфликт автостэша снят, правка уже в HEAD: '+', '.join(sorted(stages)),
+          file=sys.stderr)
+
+
 def check_conflicts(vault):
+    heal_autostash(vault)
     if git(vault, 'ls-files', '-u', '-z', binary=True).stdout:
         if not rebasing(vault):
             raise AutostashConflict('unmerged index without rebase (autostash/merge conflict); stash retained')
