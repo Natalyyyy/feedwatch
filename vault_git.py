@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Serialized vault transactions. Stdlib only; never continue without the lock."""
 import argparse
+from collections import Counter
 from contextlib import contextmanager
 import fcntl
 import os
@@ -81,8 +82,8 @@ def heal_autostash(vault):
 
     12.10.2026 клон mars-bot простоял так четыре дня: каждый тик exit 2, хотя все
     строки застрявшей правки уже были наверху. Лечим только этот случай: у каждого
-    конфликтного файла есть стадии 2 (HEAD) и 3 (стэш), и каждая непустая строка
-    стэша есть в версии HEAD. Иначе — как раньше, решает человек. Стэш не трогаем.
+    конфликтного файла есть стадии 2 (HEAD) и 3 (стэш), и правка стэша целиком
+    уже в HEAD (stash_absorbed). Иначе — как раньше, решает человек. Стэш не трогаем.
     """
     if rebasing(vault):
         return
@@ -97,13 +98,31 @@ def heal_autostash(vault):
     for name, found in stages.items():
         if '2' not in found or '3' not in found:
             return
-        ours = set(git(vault, 'cat-file', 'blob', found['2'], binary=True).stdout.splitlines())
-        theirs = git(vault, 'cat-file', 'blob', found['3'], binary=True).stdout.splitlines()
-        if any(line.strip() and line not in ours for line in theirs):
+        blob = lambda stage: git(vault, 'cat-file', 'blob', found[stage], binary=True).stdout
+        if not stash_absorbed(blob('1').splitlines() if '1' in found else None,
+                              blob('2').splitlines(), blob('3').splitlines()):
             return
     git(vault, 'checkout', 'HEAD', '--', *stages)
     print('vault: конфликт автостэша снят, правка уже в HEAD: '+', '.join(sorted(stages)),
           file=sys.stderr)
+
+
+def stash_absorbed(base, ours, theirs):
+    """Вся правка стэша уже есть в HEAD: строки стэша идут в HEAD в том же порядке и
+    с теми же повторами, а строки, которые стэш удалил из базы, удалены и в HEAD.
+
+    21.10.2026 сравнение множеством строк теряло перестановки, удаления и повторы.
+    git merge-file не годится: на случае 12.10 (upstream дописал свои строки после
+    строк стэша) он видит конфликт. Без базы (add/add) лечим только полное совпадение.
+    """
+    if base is None:
+        return ours == theirs
+    rest = iter(ours)
+    if not all(line in rest for line in theirs):
+        return False
+    removed = Counter(base) - Counter(theirs)
+    kept = Counter(ours)
+    return all(kept[line] <= Counter(theirs)[line] for line in removed)
 
 
 def check_conflicts(vault):
