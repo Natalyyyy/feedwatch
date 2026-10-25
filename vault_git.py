@@ -102,9 +102,32 @@ def heal_autostash(vault):
         if not stash_absorbed(blob('1').splitlines() if '1' in found else None,
                               blob('2').splitlines(), blob('3').splitlines()):
             return
+        if not worktree_untouched(os.path.join(vault, name), [blob(s) for s in sorted(found)]):
+            return
     git(vault, 'checkout', 'HEAD', '--', *stages)
     print('vault: конфликт автостэша снят, правка уже в HEAD: '+', '.join(sorted(stages)),
           file=sys.stderr)
+
+
+CONFLICT_MARKERS = (b'<<<<<<<', b'|||||||', b'=======', b'>>>>>>>')
+
+
+def worktree_untouched(path, blobs):
+    """Файл в рабочем дереве оставлен git-ом, человек его не правил: совпадает с одной
+    из стадий или в нём маркеры конфликта и только строки стадий. Иначе checkout HEAD
+    затрёт ручную правку (ревью 21.10.2026). Удалённый файл — тоже правка."""
+    try:
+        with open(path, 'rb') as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        return False
+    if data in blobs:
+        return True
+    lines = data.splitlines()
+    if not any(line.startswith(b'<<<<<<<') for line in lines):
+        return False
+    known = {line for blob in blobs for line in blob.splitlines()}
+    return all(line in known or line.startswith(CONFLICT_MARKERS) for line in lines)
 
 
 def stash_absorbed(base, ours, theirs):
@@ -325,7 +348,7 @@ def publish(vault, message, paths):
         path = Path(name)
         if (not name or path.is_absolute() or any(part in ('', '.', '..') for part in name.split('/'))
                 or name.startswith(':') or any(char in name for char in '*?[]')
-                or '.git' in path.parts or (vault/path).is_dir()):
+                or '.git' in path.parts or ((vault/path).is_dir() and not (vault/path).is_symlink())):
             raise ValueError('exact vault-relative file paths required: '+repr(name))
         try:
             with parent_fd(vault, name):
@@ -403,7 +426,7 @@ def changed_paths(vault, paths):
                 or name.startswith(':') or any(char in name for char in '*?[]')
                 or '.git' in path.parts):
             raise ValueError('exact vault-relative file paths required: '+repr(name))
-        if (vault/path).is_dir():
+        if (vault/path).is_dir() and not (vault/path).is_symlink():
             # -z: иначе git эскейпит кириллицу и берёт в кавычки имена с пробелами;
             # -uall: иначе новая подпапка приходит каталогом; --no-renames: иначе
             # переименование даёт вторую запись со старым именем без кода статуса.
