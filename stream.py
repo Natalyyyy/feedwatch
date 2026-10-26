@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import fcntl
 import re
 import tempfile
 from pathlib import Path
@@ -75,6 +76,22 @@ def prepend_block(path, title: str, date: str, body: str, keep: int = 0) -> list
     ручной перезапуск после сбоя — штатная ситуация, а дубль сломал бы и
     чтение планёркой, и чтение глазами.
     """
+    if not body.strip():
+        raise ValueError("пустой отчёт")
+    path = Path(path)
+    canonical = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Блокируем папку потока: её inode не меняется при замене файла, а
+    # lock-файл рядом с потоком уехал бы в волт и в git.
+    lock = os.open(canonical.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _prepend_locked(path, title, date, body, keep)
+    finally:
+        os.close(lock)
+
+
+def _prepend_locked(path, title, date, body, keep):
     записанные = []
     path = Path(path)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -135,6 +152,9 @@ def main(argv=None) -> int:
     body = src.read_text(encoding="utf-8")
     # Шапка отчёта («# ...») внутри блока лишняя: её роль играет «## дата».
     body = re.sub(r"\A#\s+[^\n]*\n+", "", body)
+    if not body.strip():
+        print("пустой отчёт: {}".format(report), file=sys.stderr)
+        return 1
     # Печатаем ВСЕ записанные файлы: вызывающий коммитит ровно то, что ему
     # назвали, и молчание про архив ротации оставляло его правку в волте.
     for записанный in prepend_block(out, title, date, body, keep=keep):

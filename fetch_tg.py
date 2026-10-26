@@ -3,6 +3,7 @@ import html as html_module
 import re
 import time
 from datetime import datetime, timezone
+from urllib.parse import quote, quote_plus
 
 import requests
 
@@ -124,9 +125,19 @@ class TGStatError(Exception):
     """TGStat вернул status=error или не-JSON."""
 
 
+def _safe_tgstat_error(value, token):
+    """Форматирует диагностику TGStat, скрывая токен и его URL-кодированные формы."""
+    message = str(value)
+    for secret in (token, quote(token, safe=""), quote_plus(token)):
+        if secret:
+            message = message.replace(secret, "[скрыто]")
+    return message
+
+
 def _tgstat_request(method, params, token):
     resp = requests.get("{}/{}".format(TGSTAT_BASE, method),
                         params=dict(params, token=token), timeout=60)
+    resp.raise_for_status()
     try:
         data = resp.json()
     except ValueError:
@@ -164,12 +175,18 @@ def fetch_tgstat(channels, limit, token, subscribers=False):
                 {"channelId": "@" + channel, "limit": limit, "hideDeleted": 1},
                 token)
         except (TGStatError, requests.RequestException) as exc:
-            errors[key] = str(exc)
+            errors[key] = _safe_tgstat_error(exc, token)
             continue
-        for item in resp.get("items", []):
+        for index, item in enumerate(resp.get("items", []), start=1):
+            if not isinstance(item, dict):
+                errors.setdefault(key, "некорректный элемент TGStat #{}: ожидался объект".format(index))
+                continue
             if item.get("id") is None or item.get("date") is None:
                 continue    # пропускаем битый/служебный элемент
-            records.append(normalize_tgstat(key, item))
+            try:
+                records.append(normalize_tgstat(key, item))
+            except (TypeError, ValueError, OverflowError, OSError):
+                errors.setdefault(key, "некорректный элемент TGStat #{}: ошибка нормализации".format(index))
         if subscribers:
             try:
                 info = _tgstat_request("channels/get", {"channelId": "@" + channel}, token)

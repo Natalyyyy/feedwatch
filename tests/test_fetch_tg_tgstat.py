@@ -16,6 +16,8 @@ ERR = {"status": "error", "error": "channel_not_found"}
 class FakeResp:
     def __init__(self, payload):
         self._payload = payload
+    def raise_for_status(self):
+        pass    # HTTP 200: TGStat сообщает ошибки в теле, status=error
     def json(self):
         return self._payload
 
