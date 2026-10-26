@@ -158,10 +158,25 @@ def main():
             print(msg, file=sys.stderr)
             sys.exit(1)
 
+    collection_status = 0
     if not args.no_fetch:
         limit = cfg["fetch_limit_pulse"] if args.mode == "pulse" else cfg["fetch_limit_weekly"]
         try:
-            fetch.run_fetch(limit, cfg=cfg, env=env, con=con, subscribers=(args.mode == "weekly"))
+            _, errors = fetch.run_fetch(limit, cfg=cfg, env=env, con=con, subscribers=(args.mode == "weekly"))
+            collection_status = fetch.collection_status(cfg, errors)
+            if collection_status:
+                msg = "⚠️ Сбор данных: {}.".format(
+                    "все источники недоступны" if collection_status == 1 else "частичный отказ источников")
+                print(msg, file=sys.stderr)
+                if collection_status == 1:
+                    sys.exit(1)
+                # Не строим сигналы по старым метрикам отказавших аккаунтов.
+                cfg = dict(cfg)
+                for platform, key in (("instagram", "accounts"), ("telegram", "channels")):
+                    section = dict(cfg.get(platform) or {})
+                    section[key] = [a for a in section.get(key, [])
+                                    if (platform, a.lower()) not in errors]
+                    cfg[platform] = section
         except fetch.TokenExpiredError:
             if args.send:
                 telegram.send(TOKEN_EXPIRED_MSG, env["TELEGRAM_BOT_TOKEN"],
@@ -178,12 +193,16 @@ def main():
     if args.mode == "pulse":
         signals = pulse_signals(con, cfg)
         if not signals:
-            print("Тихо: сигналов нет.")
+            print("Частичный сбор: новых сигналов нет." if collection_status else "Тихо: сигналов нет.")
+            if collection_status:
+                sys.exit(collection_status)
             return
         text = format_pulse(signals)
     else:
         text = build_weekly(con, cfg)  # Task 8
 
+    if collection_status:
+        text = "⚠️ Частичный сбор: часть источников недоступна.\n\n" + text
     print(text)
     if args.out:
         out_path = Path(args.out)
@@ -196,6 +215,10 @@ def main():
         # чтобы не потерять их навсегда.
         if args.mode == "pulse":
             common.mark_alerted(con, [s["post_id"] for s in signals])
+    # Готовый недельный отчёт должен разрешать следующий шаг reels.py в nisha.sh.
+    # Частичный сбор уже обозначен в тексте; полный отказ завершился выше.
+    if collection_status and args.mode != "weekly":
+        sys.exit(collection_status)
 
 
 def weekly_data(con, cfg, platform, accounts, now=None):

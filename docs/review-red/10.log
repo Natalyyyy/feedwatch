@@ -1,0 +1,94 @@
+BASELINE RERUN: исходный RED был перезаписан исполнителем.
+Фактический повтор на reels.py из git HEAD, текущие регрессионные тесты; рабочий код не откатывался.
+
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+____________________ test_download_rejects_body_above_limit ____________________
+
+tmp_path = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2713/test_download_rejects_body_abo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108f510d0>
+
+    def test_download_rejects_body_above_limit(tmp_path, monkeypatch):
+        class Response:
+            status_code = 200
+            headers = {}
+            raw = io.BytesIO(b"1234")
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def iter_content(self, chunk_size): return iter((b"1234",))
+    
+        monkeypatch.setattr(reels, "MAX_DOWNLOAD_BYTES", 3, raising=False)
+        monkeypatch.setattr(reels.requests, "get", lambda *a, **kw: Response())
+        try:
+            reels.download("https://cdn/video", tmp_path / "video.mp4")
+        except reels.ReelError as exc:
+            assert "размер" in str(exc)
+        else:
+>           assert False, "oversized download accepted"
+E           AssertionError: oversized download accepted
+E           assert False
+
+tests/test_reels_review.py:69: AssertionError
+_________________ test_ffmpeg_timeout_is_bounded_and_reported __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108f64d50>
+
+    def test_ffmpeg_timeout_is_bounded_and_reported(monkeypatch):
+        calls = []
+        def run(*args, **kwargs):
+            calls.append(kwargs)
+            raise reels.subprocess.TimeoutExpired("ffmpeg", kwargs["timeout"])
+        monkeypatch.setattr(reels.subprocess, "run", run)
+        try:
+>           reels._ffmpeg(["-i", "video.mp4", "audio.flac"])
+
+tests/test_reels_review.py:80: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/feedwatch-baseline-3zzdhlbf/reels.py:84: in _ffmpeg
+    proc = subprocess.run(["ffmpeg", "-y", "-v", "error", *args],
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (['ffmpeg', '-y', '-v', 'error', '-i', 'video.mp4', ...],)
+kwargs = {'capture_output': True, 'text': True}
+
+    def run(*args, **kwargs):
+        calls.append(kwargs)
+>       raise reels.subprocess.TimeoutExpired("ffmpeg", kwargs["timeout"])
+                                                        ^^^^^^^^^^^^^^^^^
+E       KeyError: 'timeout'
+
+tests/test_reels_review.py:77: KeyError
+_______________________ test_ffprobe_timeout_is_bounded ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108e90950>
+
+    def test_ffprobe_timeout_is_bounded(monkeypatch):
+        calls = []
+        def run(*args, **kwargs):
+            calls.append(kwargs)
+            raise reels.subprocess.TimeoutExpired("ffprobe", kwargs["timeout"])
+        monkeypatch.setattr(reels.subprocess, "run", run)
+>       assert reels.probe_duration("video.mp4") == 0.0
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_reels_review.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/feedwatch-baseline-3zzdhlbf/reels.py:166: in probe_duration
+    proc = subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', ...],)
+kwargs = {'capture_output': True, 'text': True}
+
+    def run(*args, **kwargs):
+        calls.append(kwargs)
+>       raise reels.subprocess.TimeoutExpired("ffprobe", kwargs["timeout"])
+                                                         ^^^^^^^^^^^^^^^^^
+E       KeyError: 'timeout'
+
+tests/test_reels_review.py:92: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_reels_review.py::test_download_rejects_body_above_limit - A...
+FAILED tests/test_reels_review.py::test_ffmpeg_timeout_is_bounded_and_reported
+FAILED tests/test_reels_review.py::test_ffprobe_timeout_is_bounded - KeyError...
+3 failed, 10 deselected in 0.13s

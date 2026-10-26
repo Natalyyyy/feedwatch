@@ -1,0 +1,16 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+___________ test_review_logs_do_not_disclose_local_user_paths[7.log] ___________
+tests/test_round4_regressions.py:78: in test_review_logs_do_not_disclose_local_user_paths
+    assert not has_private_path, "Review log contains a local user path"
+E   AssertionError: Review log contains a local user path
+E   assert not True
+__________ test_review_logs_do_not_disclose_local_user_paths[12.log] ___________
+tests/test_round4_regressions.py:78: in test_review_logs_do_not_disclose_local_user_paths
+    assert not has_private_path, "Review log contains a local user path"
+E   AssertionError: Review log contains a local user path
+E   assert not True
+=========================== short test summary info ============================
+FAILED tests/test_round4_regressions.py::test_review_logs_do_not_disclose_local_user_paths[7.log]
+FAILED tests/test_round4_regressions.py::test_review_logs_do_not_disclose_local_user_paths[12.log]
+2 failed, 6 deselected in 0.08s

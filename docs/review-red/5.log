@@ -1,0 +1,118 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+___________ test_5_expired_instagram_does_not_block_telegram[False] ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108726a50>
+con = <sqlite3.Connection object at 0x10880a3e0>, tg_fails = False
+
+    @pytest.mark.parametrize('tg_fails', [False, True])
+    def test_5_expired_instagram_does_not_block_telegram(monkeypatch, con, tg_fails):
+        calls = []
+        def get(url, **kwargs):
+            calls.append(url)
+            if 'facebook' in url:
+                return Response({'error': {'code': 190, 'message': 'synthetic-secret'}})
+            if tg_fails:
+                raise requests.Timeout('synthetic-secret')
+            return Response({'status': 'ok', 'response': {'items': [
+                {'id': 1, 'date': 1792800000, 'text': 'hello', 'views': 10}]}})
+        monkeypatch.setattr(requests, 'get', get)
+        cfg = config()
+        cfg['telegram'] = {'source': 'tgstat', 'channels': ['ch']}
+>       records, errors = fetch.run_fetch(3, cfg=cfg, env=dict(ENV, TGSTAT_TOKEN='synthetic-secret'), con=con)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_fetch_review.py:85: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+fetch.py:182: in run_fetch
+    recs, errs = fetch_graph(accounts, limit,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+accounts = ['acc'], limit = 3, ig_id = '1', token = 'synthetic-secret'
+
+    def fetch_graph(accounts, limit, ig_id, token):
+        records, errors = [], {}
+        for account in accounts:
+            fields = ("business_discovery.username({}){{media.limit({})"
+                      "{{id,caption,like_count,comments_count,permalink,timestamp,"
+                      "media_type,media_url}}}}"
+                      ).format(account, limit)
+            try:
+                resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
+                                    params={"fields": fields, "access_token": token},
+                                    timeout=60)
+            except requests.RequestException as exc:
+                errors[account.lower()] = "Instagram недоступен: {}".format(safe_error(exc))
+                continue
+            try:
+                data = resp.json()
+            except ValueError:
+                errors[account.lower()] = "не-JSON ответ от Meta Graph API"
+                continue
+            if "error" in data:
+                err = data["error"]
+                if err.get("code") == 190:
+>                   raise TokenExpiredError(err.get("message", "token expired"))
+E                   fetch.TokenExpiredError: synthetic-secret
+
+fetch.py:139: TokenExpiredError
+____________ test_5_expired_instagram_does_not_block_telegram[True] ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1086663d0>
+con = <sqlite3.Connection object at 0x10880a4d0>, tg_fails = True
+
+    @pytest.mark.parametrize('tg_fails', [False, True])
+    def test_5_expired_instagram_does_not_block_telegram(monkeypatch, con, tg_fails):
+        calls = []
+        def get(url, **kwargs):
+            calls.append(url)
+            if 'facebook' in url:
+                return Response({'error': {'code': 190, 'message': 'synthetic-secret'}})
+            if tg_fails:
+                raise requests.Timeout('synthetic-secret')
+            return Response({'status': 'ok', 'response': {'items': [
+                {'id': 1, 'date': 1792800000, 'text': 'hello', 'views': 10}]}})
+        monkeypatch.setattr(requests, 'get', get)
+        cfg = config()
+        cfg['telegram'] = {'source': 'tgstat', 'channels': ['ch']}
+>       records, errors = fetch.run_fetch(3, cfg=cfg, env=dict(ENV, TGSTAT_TOKEN='synthetic-secret'), con=con)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_fetch_review.py:85: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+fetch.py:182: in run_fetch
+    recs, errs = fetch_graph(accounts, limit,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+accounts = ['acc'], limit = 3, ig_id = '1', token = 'synthetic-secret'
+
+    def fetch_graph(accounts, limit, ig_id, token):
+        records, errors = [], {}
+        for account in accounts:
+            fields = ("business_discovery.username({}){{media.limit({})"
+                      "{{id,caption,like_count,comments_count,permalink,timestamp,"
+                      "media_type,media_url}}}}"
+                      ).format(account, limit)
+            try:
+                resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
+                                    params={"fields": fields, "access_token": token},
+                                    timeout=60)
+            except requests.RequestException as exc:
+                errors[account.lower()] = "Instagram недоступен: {}".format(safe_error(exc))
+                continue
+            try:
+                data = resp.json()
+            except ValueError:
+                errors[account.lower()] = "не-JSON ответ от Meta Graph API"
+                continue
+            if "error" in data:
+                err = data["error"]
+                if err.get("code") == 190:
+>                   raise TokenExpiredError(err.get("message", "token expired"))
+E                   fetch.TokenExpiredError: synthetic-secret
+
+fetch.py:139: TokenExpiredError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_5_expired_instagram_does_not_block_telegram[False]
+FAILED tests/test_fetch_review.py::test_5_expired_instagram_does_not_block_telegram[True]
+2 failed, 7 deselected in 0.47s

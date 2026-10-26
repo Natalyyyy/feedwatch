@@ -1,0 +1,27 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________________ test_12_real_fetch_cli_network_failure ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108c47a10>
+con = <sqlite3.Connection object at 0x108d2a7a0>
+tmp_path = PosixPath('/tmp/pytest-of-USER/pytest-2656/test_12_real_fetch_cli_network0')
+capsys = <_pytest.capture.CaptureFixture object at 0x108e57850>
+
+    def test_12_real_fetch_cli_network_failure(monkeypatch, con, tmp_path, capsys):
+        cli_files(monkeypatch, tmp_path, config())
+        monkeypatch.setattr(common, 'connect', lambda: con)
+        monkeypatch.setattr('sys.argv', ['fetch.py'])
+        def fail(*a, **kw):
+            raise requests.ConnectionError('offline')
+        monkeypatch.setattr(requests, 'get', fail)
+>       with pytest.raises(SystemExit) as caught:
+E       Failed: DID NOT RAISE SystemExit
+
+tests/test_fetch_review.py:120: Failed
+----------------------------- Captured stdout call -----------------------------
+Сохранено постов: 0
+----------------------------- Captured stderr call -----------------------------
+⚠️ [instagram] @acc: Instagram недоступен: ConnectionError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_12_real_fetch_cli_network_failure - F...
+1 failed, 13 deselected in 0.61s

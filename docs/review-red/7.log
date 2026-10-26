@@ -1,0 +1,100 @@
+BASELINE RERUN: исходный RED был перезаписан исполнителем.
+Фактический повтор на reels.py из git HEAD, текущие регрессионные тесты; рабочий код не откатывался.
+
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_____________ test_report_includes_saved_transcripts_on_repeat_run _____________
+
+tmp_path = PosixPath('/tmp/pytest-of-USER/pytest-2726/test_report_includes_saved_tra0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x106f37310>
+
+    def test_report_includes_saved_transcripts_on_repeat_run(tmp_path, monkeypatch):
+        con = common.connect(tmp_path / "t.db")
+        now = common.now_utc()
+        for i in range(3):
+            _post(con, f"base{i}", "acc", 10 + i, 10, now=now)
+        _post(con, "saved", "acc", 1, 100, transcript="сохранённая речь", now=now)
+        _post(con, "fresh", "acc", 2, 90, now=now)
+        class VideoResponse:
+            status_code = 200
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            @property
+            def raw(self): return io.BytesIO(b"video")
+            def iter_content(self, chunk_size): return iter((b"video",))
+        class GroqResponse:
+            status_code = 200
+            def json(self): return {"text": "новая речь"}
+        def post(*args, **kwargs): return GroqResponse()
+        def run(args, **kwargs):
+            if args[0] == "ffmpeg":
+                from pathlib import Path
+                Path(args[-1]).write_bytes(b"flac")
+            return type("Proc", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+        get_calls = []
+        def get(*a, **kw):
+            get_calls.append(a[0])
+            return VideoResponse()
+        monkeypatch.setattr(reels.requests, "get", get)
+        monkeypatch.setattr(reels.requests, "post", post)
+        monkeypatch.setattr(reels.subprocess, "run", run)
+    
+        done, failed = reels.process(con, CFG, {"GROQ_API_KEY": "x"}, data_dir=tmp_path)
+        report = reels.render(done, failed)
+        second_done, second_failed = reels.process(
+            con, CFG, {"GROQ_API_KEY": "x"}, data_dir=tmp_path)
+        second_report = reels.render(second_done, second_failed)
+    
+>       assert "сохранённая речь" in report
+E       AssertionError: assert 'сохранённая речь' in '🎬 Расшифровка топовых рилсов недели\n\n\n@acc — ×9.0 от медианы · 2026-10-23\nhttps://instagram.com/reel/fresh\nподпись: подпись\nречь: новая речь\n'
+
+tests/test_reels_review.py:46: AssertionError
+___________________ test_empty_database_and_saved_edge_cases ___________________
+
+tmp_path = PosixPath('/tmp/pytest-of-USER/pytest-2726/test_empty_database_and_saved_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x106f35ad0>
+
+    def test_empty_database_and_saved_edge_cases(tmp_path, monkeypatch):
+        con = common.connect(tmp_path / "empty.db")
+        monkeypatch.setattr(reels.requests, "get",
+                            lambda *a, **kw: pytest.fail("no video should be fetched"))
+        done, failed = reels.process(con, CFG, {"GROQ_API_KEY": "x"}, data_dir=tmp_path)
+        assert done == failed == []
+        now = common.now_utc()
+        for i in range(3):
+            _post(con, f"base{i}", "acc", 10 + i, 10, now=now)
+        _post(con, "silent", "acc", 1, 100, transcript="", now=now)
+        _post(con, "old", "acc", 20, 100, transcript="старая речь", now=now)
+        done, failed = reels.process(con, CFG, {"GROQ_API_KEY": "x"}, data_dir=tmp_path)
+        assert not failed
+        report = reels.render(done, failed)
+>       assert "без слов" in report
+E       AssertionError: assert 'без слов' in '🎬 Рилсы: нечего разбирать (нет свежих видео с живой ссылкой)\n'
+
+tests/test_reels_review.py:180: AssertionError
+__________ test_failed_new_download_keeps_saved_transcript_in_report ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-USER/pytest-2726/test_failed_new_download_keeps0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x106f0aed0>
+
+    def test_failed_new_download_keeps_saved_transcript_in_report(tmp_path, monkeypatch):
+        con = common.connect(tmp_path / "t.db")
+        now = common.now_utc()
+        for i in range(3):
+            _post(con, f"base{i}", "acc", 10 + i, 10, now=now)
+        _post(con, "saved", "acc", 1, 100, transcript="прошлая речь", now=now)
+        _post(con, "new", "acc", 1, 90, now=now)
+        monkeypatch.setattr(reels.requests, "get",
+                            lambda *a, **kw: (_ for _ in ()).throw(reels.requests.ConnectionError("offline")))
+        done, failed = reels.process(con, CFG, {"GROQ_API_KEY": "x"}, data_dir=tmp_path)
+>       assert "прошлая речь" in reels.render(done, failed)
+E       AssertionError: assert 'прошлая речь' in '🎬 Расшифровка топовых рилсов недели\n\n\n@acc https://instagram.com/reel/new — не разобрал: offline\n'
+E        +  where '🎬 Расшифровка топовых рилсов недели\n\n\n@acc https://instagram.com/reel/new — не разобрал: offline\n' = <function render at 0x1065f1440>([], [{'post_id': 'new', 'account': 'acc', 'caption': 'подпись', 'posted_at': '2026-10-24T17:00:56.261787+00:00', ...}])
+E        +    where <function render at 0x1065f1440> = reels.render
+
+tests/test_reels_review.py:194: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_reels_review.py::test_report_includes_saved_transcripts_on_repeat_run
+FAILED tests/test_reels_review.py::test_empty_database_and_saved_edge_cases
+FAILED tests/test_reels_review.py::test_failed_new_download_keeps_saved_transcript_in_report
+3 failed, 10 deselected in 0.11s

@@ -1,0 +1,56 @@
+FF.                                                                      [100%]
+=================================== FAILURES ===================================
+_________ test_4_report_distinguishes_collection_failure[accounts0-1] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109ec4910>
+con = <sqlite3.Connection object at 0x10a48e980>
+tmp_path = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2659/test_4_report_distinguishes_co0')
+capsys = <_pytest.capture.CaptureFixture object at 0x10a5c9910>
+accounts = ['bad'], status = 1
+
+    @pytest.mark.parametrize('accounts,status', [(['bad'], 1), (['good', 'bad'], 2), (['good'], 0)])
+    def test_4_report_distinguishes_collection_failure(monkeypatch, con, tmp_path, capsys, accounts, status):
+        cli_files(monkeypatch, tmp_path, config(accounts))
+        monkeypatch.setattr(common, 'connect', lambda: con)
+        monkeypatch.setattr('sys.argv', ['report.py', 'pulse'])
+        def get(*a, **kw):
+            if 'bad' in kw['params']['fields']:
+                raise requests.Timeout('offline')
+            return Response({})
+        monkeypatch.setattr(requests, 'get', get)
+        if status:
+>           with pytest.raises(SystemExit) as caught:
+E           Failed: DID NOT RAISE SystemExit
+
+tests/test_fetch_review.py:137: Failed
+----------------------------- Captured stdout call -----------------------------
+Тихо: сигналов нет.
+_________ test_4_report_distinguishes_collection_failure[accounts1-2] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a5c9390>
+con = <sqlite3.Connection object at 0x10a48eb60>
+tmp_path = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2659/test_4_report_distinguishes_co1')
+capsys = <_pytest.capture.CaptureFixture object at 0x10a5c8450>
+accounts = ['good', 'bad'], status = 2
+
+    @pytest.mark.parametrize('accounts,status', [(['bad'], 1), (['good', 'bad'], 2), (['good'], 0)])
+    def test_4_report_distinguishes_collection_failure(monkeypatch, con, tmp_path, capsys, accounts, status):
+        cli_files(monkeypatch, tmp_path, config(accounts))
+        monkeypatch.setattr(common, 'connect', lambda: con)
+        monkeypatch.setattr('sys.argv', ['report.py', 'pulse'])
+        def get(*a, **kw):
+            if 'bad' in kw['params']['fields']:
+                raise requests.Timeout('offline')
+            return Response({})
+        monkeypatch.setattr(requests, 'get', get)
+        if status:
+>           with pytest.raises(SystemExit) as caught:
+E           Failed: DID NOT RAISE SystemExit
+
+tests/test_fetch_review.py:137: Failed
+----------------------------- Captured stdout call -----------------------------
+Тихо: сигналов нет.
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_4_report_distinguishes_collection_failure[accounts0-1]
+FAILED tests/test_fetch_review.py::test_4_report_distinguishes_collection_failure[accounts1-2]
+2 failed, 1 passed, 14 deselected in 0.30s

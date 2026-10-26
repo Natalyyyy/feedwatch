@@ -1,7 +1,9 @@
 """Сбор постов feedwatch (Instagram: Apify/Meta Graph API; Telegram: web/TGStat) → SQLite."""
 import argparse
 import sys
+import re
 import time
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -39,6 +41,8 @@ def normalize_apify(item):
     if likes is not None and likes < 0:  # -1 = лайки скрыты
         likes = None
     return {
+        "media_type": {"Video": "VIDEO", "Image": "IMAGE", "Sidecar": "CAROUSEL_ALBUM"}.get(item.get("type")),
+        "media_url": item.get("videoUrl"),
         "post_id": item["shortCode"],
         "account": item["ownerUsername"].lower(),
         "caption": item.get("caption") or "",
@@ -94,6 +98,31 @@ def normalize_graph(account, media):
 DEBUG_TOKEN_URL = "https://graph.facebook.com/v21.0/debug_token"
 
 
+def get_with_retry(url, **kwargs):
+    """Повторяем только безопасный GET, максимум три попытки."""
+    for attempt in range(3):
+        try:
+            response = requests.get(url, **kwargs)
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt == 2:
+                raise
+            delay = 2 ** attempt
+        else:
+            if getattr(response, "status_code", 200) not in (429, 500, 502, 503, 504) or attempt == 2:
+                return response
+            try:
+                delay = max(0, float(response.headers.get("Retry-After", 2 ** attempt)))
+            except (ValueError, TypeError):
+                try:
+                    delay = max(0, parsedate_to_datetime(
+                        response.headers.get("Retry-After", "")).timestamp() - time.time())
+                except (ValueError, TypeError, OverflowError):
+                    delay = 2 ** attempt
+            if delay > 30:
+                return response  # Не повторяем раньше разрешённого сервером срока.
+        time.sleep(delay)
+
+
 def token_days_left(token, now=None):
     """Сколько дней осталось токену Meta. None — бессрочный или не выяснили.
 
@@ -103,7 +132,7 @@ def token_days_left(token, now=None):
     """
     now = now if now is not None else time.time()
     try:
-        payload = requests.get(DEBUG_TOKEN_URL, params={
+        payload = get_with_retry(DEBUG_TOKEN_URL, params={
             "input_token": token, "access_token": token}, timeout=30).json()
     except (requests.RequestException, ValueError):
         return None
@@ -120,9 +149,13 @@ def fetch_graph(accounts, limit, ig_id, token):
                   "{{id,caption,like_count,comments_count,permalink,timestamp,"
                   "media_type,media_url}}}}"
                   ).format(account, limit)
-        resp = requests.get(GRAPH_URL.format(ig_id=ig_id),
-                            params={"fields": fields, "access_token": token},
-                            timeout=60)
+        try:
+            resp = get_with_retry(GRAPH_URL.format(ig_id=ig_id),
+                                params={"fields": fields, "access_token": token},
+                                timeout=60)
+        except requests.RequestException as exc:
+            errors[account.lower()] = "Instagram недоступен: {}".format(safe_error(exc))
+            continue
         try:
             data = resp.json()
         except ValueError:
@@ -134,9 +167,32 @@ def fetch_graph(accounts, limit, ig_id, token):
                 raise TokenExpiredError(err.get("message", "token expired"))
             errors[account.lower()] = err.get("message", "неизвестная ошибка")
             continue
+        if getattr(resp, "status_code", 200) >= 400:
+            errors[account.lower()] = "Meta Graph API HTTP {}".format(resp.status_code)
+            continue
         media = data.get("business_discovery", {}).get("media", {}).get("data", [])
         records.extend(normalize_graph(account, m) for m in media)
     return records, errors
+
+
+def safe_error(exc):
+    """Только тип и HTTP-код: URL исключения может содержать токен."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return type(exc).__name__ + (" HTTP {}".format(status) if status else "")
+
+
+def redact_error(message, env):
+    if not message:
+        return message
+    text = re.sub(r"https?://\S+", "[URL скрыт]", str(message))
+    for key, value in env.items():
+        if value and ("TOKEN" in key or "KEY" in key or "SECRET" in key):
+            if len(str(value)) < 4:
+                text = re.sub(r"(?<!\w)" + re.escape(str(value)) + r"(?!\w)",
+                              "[секрет скрыт]", text)
+            else:
+                text = text.replace(str(value), "[секрет скрыт]")
+    return text
 
 
 def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
@@ -160,10 +216,16 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
                 _require_env(env, ["IG_ACCESS_TOKEN", "IG_BUSINESS_ID"])
                 recs, errs = fetch_graph(accounts, limit,
                                          env["IG_BUSINESS_ID"], env["IG_ACCESS_TOKEN"])
+        except (TokenExpiredError, ConfigError) as exc:
+            if not tg.get("channels"):
+                raise
+            message = TOKEN_EXPIRED_MSG if isinstance(exc, TokenExpiredError) else str(exc)
+            recs, errs = [], {a.lower(): message for a in accounts}
         except requests.RequestException as exc:
             # Сеть/лимиты Apify или Graph не должны ронять Telegram-часть рана.
-            recs, errs = [], {a.lower(): "Instagram недоступен: {}".format(exc)
+            recs, errs = [], {a.lower(): "Instagram недоступен: {}".format(safe_error(exc))
                              for a in accounts}
+        errs = {key: redact_error(value, env) for key, value in errs.items()}
         records += recs
         common.save_posts(con, recs)
         for a in accounts:
@@ -179,6 +241,7 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
             recs, errs, subs = fetch_tg.fetch_tgstat(channels, limit,
                                                      env["TGSTAT_TOKEN"],
                                                      subscribers=subscribers)
+        errs = {key: redact_error(value, env) for key, value in errs.items()}
         records += recs
         common.save_posts(con, recs)
         for c in channels:
@@ -187,6 +250,15 @@ def run_fetch(limit, cfg=None, env=None, con=None, subscribers=False):
             common.set_account_status(con, c, error=errs.get(c),
                                       platform="telegram", subscribers=subs.get(c))
     return records, {k: v for k, v in errors.items() if v}
+
+
+def collection_status(cfg, errors):
+    """0 — полный сбор, 1 — все источники отказали, 2 — частичный."""
+    active = set(common.active_accounts(cfg))
+    failed = active.intersection(errors)
+    if not failed:
+        return 0
+    return 1 if failed == active else 2
 
 
 TOKEN_EXPIRED_MSG = (
@@ -206,7 +278,8 @@ def main():
                     help="постов на аккаунт (30 для холодного старта)")
     args = ap.parse_args()
     try:
-        records, errors = run_fetch(args.limit)
+        cfg = common.load_config()
+        records, errors = run_fetch(args.limit, cfg=cfg)
     except TokenExpiredError:
         print(TOKEN_EXPIRED_MSG, file=sys.stderr)
         sys.exit(1)
@@ -219,6 +292,9 @@ def main():
     print("Сохранено постов: {}".format(len(records)))
     for (platform, a), e in errors.items():
         print("⚠️ [{}] @{}: {}".format(platform, a, e), file=sys.stderr)
+    status = collection_status(cfg, errors)
+    if status:
+        sys.exit(status)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,64 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+_____________ test_6_apify_media_schema[Video-https://cdn/v-VIDEO] _____________
+
+kind = 'Video', url = 'https://cdn/v', expected = 'VIDEO'
+con = <sqlite3.Connection object at 0x1085ba6b0>
+
+    @pytest.mark.parametrize('kind,url,expected', [('Video', 'https://cdn/v', 'VIDEO'), ('Image', None, 'IMAGE'), ('Sidecar', None, 'CAROUSEL_ALBUM'), (None, None, None)])
+    def test_6_apify_media_schema(kind, url, expected, con):
+        item = {'shortCode': 'a', 'ownerUsername': 'Acc', 'timestamp': '2026-10-24T00:00:00Z', 'type': kind, 'videoUrl': url}
+        record = fetch.normalize_apify(item)
+>       assert record['media_type'] == expected
+               ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'media_type'
+
+tests/test_fetch_review.py:96: KeyError
+_________________ test_6_apify_media_schema[Image-None-IMAGE] __________________
+
+kind = 'Image', url = None, expected = 'IMAGE'
+con = <sqlite3.Connection object at 0x1085ba2f0>
+
+    @pytest.mark.parametrize('kind,url,expected', [('Video', 'https://cdn/v', 'VIDEO'), ('Image', None, 'IMAGE'), ('Sidecar', None, 'CAROUSEL_ALBUM'), (None, None, None)])
+    def test_6_apify_media_schema(kind, url, expected, con):
+        item = {'shortCode': 'a', 'ownerUsername': 'Acc', 'timestamp': '2026-10-24T00:00:00Z', 'type': kind, 'videoUrl': url}
+        record = fetch.normalize_apify(item)
+>       assert record['media_type'] == expected
+               ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'media_type'
+
+tests/test_fetch_review.py:96: KeyError
+____________ test_6_apify_media_schema[Sidecar-None-CAROUSEL_ALBUM] ____________
+
+kind = 'Sidecar', url = None, expected = 'CAROUSEL_ALBUM'
+con = <sqlite3.Connection object at 0x1085bae30>
+
+    @pytest.mark.parametrize('kind,url,expected', [('Video', 'https://cdn/v', 'VIDEO'), ('Image', None, 'IMAGE'), ('Sidecar', None, 'CAROUSEL_ALBUM'), (None, None, None)])
+    def test_6_apify_media_schema(kind, url, expected, con):
+        item = {'shortCode': 'a', 'ownerUsername': 'Acc', 'timestamp': '2026-10-24T00:00:00Z', 'type': kind, 'videoUrl': url}
+        record = fetch.normalize_apify(item)
+>       assert record['media_type'] == expected
+               ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'media_type'
+
+tests/test_fetch_review.py:96: KeyError
+__________________ test_6_apify_media_schema[None-None-None] ___________________
+
+kind = None, url = None, expected = None
+con = <sqlite3.Connection object at 0x1085bb2e0>
+
+    @pytest.mark.parametrize('kind,url,expected', [('Video', 'https://cdn/v', 'VIDEO'), ('Image', None, 'IMAGE'), ('Sidecar', None, 'CAROUSEL_ALBUM'), (None, None, None)])
+    def test_6_apify_media_schema(kind, url, expected, con):
+        item = {'shortCode': 'a', 'ownerUsername': 'Acc', 'timestamp': '2026-10-24T00:00:00Z', 'type': kind, 'videoUrl': url}
+        record = fetch.normalize_apify(item)
+>       assert record['media_type'] == expected
+               ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'media_type'
+
+tests/test_fetch_review.py:96: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_6_apify_media_schema[Video-https://cdn/v-VIDEO]
+FAILED tests/test_fetch_review.py::test_6_apify_media_schema[Image-None-IMAGE]
+FAILED tests/test_fetch_review.py::test_6_apify_media_schema[Sidecar-None-CAROUSEL_ALBUM]
+FAILED tests/test_fetch_review.py::test_6_apify_media_schema[None-None-None]
+4 failed, 9 deselected in 0.37s

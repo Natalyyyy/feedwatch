@@ -1,0 +1,46 @@
+F..F..                                                                   [100%]
+=================================== FAILURES ===================================
+___ test_weekly_exit_allows_reels_after_partial_collection[False-accounts0] ____
+tests/test_round4_regressions.py:59: in test_weekly_exit_allows_reels_after_partial_collection
+    assert status == 0  # nisha.sh only runs reels.py on success.
+    ^^^^^^^^^^^^^^^^^^
+E   assert 2 == 0
+----------------------------- Captured stdout call -----------------------------
+⚠️ Частичный сбор: часть источников недоступна.
+
+📊 За неделю
+
+За неделю ни одного нового поста.
+
+😴 Молчали: @good
+----------------------------- Captured stderr call -----------------------------
+⚠️ Сбор данных: частичный отказ источников.
+____ test_weekly_exit_allows_reels_after_partial_collection[True-accounts0] ____
+tests/test_round4_regressions.py:59: in test_weekly_exit_allows_reels_after_partial_collection
+    assert status == 0  # nisha.sh only runs reels.py on success.
+    ^^^^^^^^^^^^^^^^^^
+E   assert 2 == 0
+----------------------------- Captured stdout call -----------------------------
+⚠️ Частичный сбор: часть источников недоступна.
+
+📊 За неделю
+
+❤️ Топ по лайкам (×N от медианы аккаунта)
+
+@good — ×5.0 от медианы ⏳ ещё растёт
+❤️ 50 💬 5
+тестовый пост
+https://www.instagram.com/p/good/
+
+💬 Топ по комментам (×N от медианы аккаунта)
+
+@good — ×5.0 от медианы ⏳ ещё растёт
+❤️ 50 💬 5
+тестовый пост
+https://www.instagram.com/p/good/
+----------------------------- Captured stderr call -----------------------------
+⚠️ Сбор данных: частичный отказ источников.
+=========================== short test summary info ============================
+FAILED tests/test_round4_regressions.py::test_weekly_exit_allows_reels_after_partial_collection[False-accounts0]
+FAILED tests/test_round4_regressions.py::test_weekly_exit_allows_reels_after_partial_collection[True-accounts0]
+2 failed, 4 passed, 2 deselected in 0.16s

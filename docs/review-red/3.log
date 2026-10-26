@@ -1,0 +1,112 @@
+FFFF.                                                                    [100%]
+=================================== FAILURES ===================================
+__________ test_3_account_failure_preserves_other_accounts[0-Timeout] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1091cf350>
+con = <sqlite3.Connection object at 0x1090b6110>
+failure = <class 'requests.exceptions.Timeout'>, failed_index = 0
+
+    @pytest.mark.parametrize('failure', [requests.Timeout, requests.ConnectionError])
+    @pytest.mark.parametrize('failed_index', [0, 1])
+    def test_3_account_failure_preserves_other_accounts(monkeypatch, con, failure, failed_index):
+        calls = []
+        def get(*args, **kwargs):
+            calls.append(kwargs['params']['fields'])
+            if ('bad' in calls[-1]):
+                raise failure('synthetic-secret')
+            return Response({'business_discovery': {'media': {'data': [{
+                'id': 'ok', 'timestamp': '2026-10-24T10:00:00+00:00', 'permalink': 'https://x'}]}}})
+        monkeypatch.setattr(requests, 'get', get)
+        accounts = ['good', 'bad'] if failed_index else ['bad', 'good']
+        records, errors = fetch.run_fetch(3, cfg=config(accounts), env=ENV, con=con)
+>       assert [r['post_id'] for r in records] == ['ok']
+E       AssertionError: assert [] == ['ok']
+E         
+E         Right contains one more item: 'ok'
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:60: AssertionError
+______ test_3_account_failure_preserves_other_accounts[0-ConnectionError] ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1091cfd50>
+con = <sqlite3.Connection object at 0x1090b6200>
+failure = <class 'requests.exceptions.ConnectionError'>, failed_index = 0
+
+    @pytest.mark.parametrize('failure', [requests.Timeout, requests.ConnectionError])
+    @pytest.mark.parametrize('failed_index', [0, 1])
+    def test_3_account_failure_preserves_other_accounts(monkeypatch, con, failure, failed_index):
+        calls = []
+        def get(*args, **kwargs):
+            calls.append(kwargs['params']['fields'])
+            if ('bad' in calls[-1]):
+                raise failure('synthetic-secret')
+            return Response({'business_discovery': {'media': {'data': [{
+                'id': 'ok', 'timestamp': '2026-10-24T10:00:00+00:00', 'permalink': 'https://x'}]}}})
+        monkeypatch.setattr(requests, 'get', get)
+        accounts = ['good', 'bad'] if failed_index else ['bad', 'good']
+        records, errors = fetch.run_fetch(3, cfg=config(accounts), env=ENV, con=con)
+>       assert [r['post_id'] for r in records] == ['ok']
+E       AssertionError: assert [] == ['ok']
+E         
+E         Right contains one more item: 'ok'
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:60: AssertionError
+__________ test_3_account_failure_preserves_other_accounts[1-Timeout] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1091ce950>
+con = <sqlite3.Connection object at 0x1090b6b60>
+failure = <class 'requests.exceptions.Timeout'>, failed_index = 1
+
+    @pytest.mark.parametrize('failure', [requests.Timeout, requests.ConnectionError])
+    @pytest.mark.parametrize('failed_index', [0, 1])
+    def test_3_account_failure_preserves_other_accounts(monkeypatch, con, failure, failed_index):
+        calls = []
+        def get(*args, **kwargs):
+            calls.append(kwargs['params']['fields'])
+            if ('bad' in calls[-1]):
+                raise failure('synthetic-secret')
+            return Response({'business_discovery': {'media': {'data': [{
+                'id': 'ok', 'timestamp': '2026-10-24T10:00:00+00:00', 'permalink': 'https://x'}]}}})
+        monkeypatch.setattr(requests, 'get', get)
+        accounts = ['good', 'bad'] if failed_index else ['bad', 'good']
+        records, errors = fetch.run_fetch(3, cfg=config(accounts), env=ENV, con=con)
+>       assert [r['post_id'] for r in records] == ['ok']
+E       AssertionError: assert [] == ['ok']
+E         
+E         Right contains one more item: 'ok'
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:60: AssertionError
+______ test_3_account_failure_preserves_other_accounts[1-ConnectionError] ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109216b90>
+con = <sqlite3.Connection object at 0x1090b7010>
+failure = <class 'requests.exceptions.ConnectionError'>, failed_index = 1
+
+    @pytest.mark.parametrize('failure', [requests.Timeout, requests.ConnectionError])
+    @pytest.mark.parametrize('failed_index', [0, 1])
+    def test_3_account_failure_preserves_other_accounts(monkeypatch, con, failure, failed_index):
+        calls = []
+        def get(*args, **kwargs):
+            calls.append(kwargs['params']['fields'])
+            if ('bad' in calls[-1]):
+                raise failure('synthetic-secret')
+            return Response({'business_discovery': {'media': {'data': [{
+                'id': 'ok', 'timestamp': '2026-10-24T10:00:00+00:00', 'permalink': 'https://x'}]}}})
+        monkeypatch.setattr(requests, 'get', get)
+        accounts = ['good', 'bad'] if failed_index else ['bad', 'good']
+        records, errors = fetch.run_fetch(3, cfg=config(accounts), env=ENV, con=con)
+>       assert [r['post_id'] for r in records] == ['ok']
+E       AssertionError: assert [] == ['ok']
+E         
+E         Right contains one more item: 'ok'
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:60: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_3_account_failure_preserves_other_accounts[0-Timeout]
+FAILED tests/test_fetch_review.py::test_3_account_failure_preserves_other_accounts[0-ConnectionError]
+FAILED tests/test_fetch_review.py::test_3_account_failure_preserves_other_accounts[1-Timeout]
+FAILED tests/test_fetch_review.py::test_3_account_failure_preserves_other_accounts[1-ConnectionError]
+4 failed, 1 passed, 2 deselected in 0.35s

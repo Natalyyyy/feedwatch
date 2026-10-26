@@ -1,0 +1,53 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+____________________ test_download_rejects_body_above_limit ____________________
+
+tmp_path = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2679/test_download_rejects_body_abo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1086bd550>
+
+    def test_download_rejects_body_above_limit(tmp_path, monkeypatch):
+        class Response:
+            status_code = 200
+            headers = {}
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def iter_content(self, chunk_size): return iter((b"1234",))
+    
+        monkeypatch.setattr(reels, "MAX_DOWNLOAD_BYTES", 3)
+        monkeypatch.setattr(reels.requests, "get", lambda *a, **kw: Response())
+        try:
+            reels.download("https://cdn/video", tmp_path / "video.mp4")
+        except reels.ReelError as exc:
+            assert "размер" in str(exc)
+        else:
+            assert False, "oversized download accepted"
+>       assert not (tmp_path / "video.mp4").exists()
+E       AssertionError: assert not True
+E        +  where True = exists()
+E        +    where exists = (PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2679/test_download_rejects_body_abo0') / 'video.mp4').exists
+
+tests/test_reels_review.py:67: AssertionError
+_______________ test_download_network_error_removes_partial_file _______________
+
+tmp_path = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2679/test_download_network_error_re0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108764890>
+
+    def test_download_network_error_removes_partial_file(tmp_path, monkeypatch):
+        class BrokenResponse(StreamResponse):
+            def iter_content(self, chunk_size):
+                yield b"partial"
+                raise reels.requests.ConnectionError("disconnected")
+        target = tmp_path / "partial.mp4"
+        monkeypatch.setattr(reels.requests, "get", lambda *a, **kw: BrokenResponse())
+        with pytest.raises(reels.requests.ConnectionError):
+            reels.download("https://cdn/x", target)
+>       assert not target.exists()
+E       AssertionError: assert not True
+E        +  where True = exists()
+E        +    where exists = PosixPath('/private/var/folders/z3/t1px_3653hl3t6t88d4938rw0000gn/T/pytest-of-nataliadudina/pytest-2679/test_download_network_error_re0/partial.mp4').exists
+
+tests/test_reels_review.py:141: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_reels_review.py::test_download_rejects_body_above_limit - A...
+FAILED tests/test_reels_review.py::test_download_network_error_removes_partial_file
+2 failed, 11 deselected in 0.37s

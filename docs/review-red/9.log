@@ -1,0 +1,149 @@
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+_________________ test_9_safe_get_retries_temporary_http[429] __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10aa57250>
+status = 429
+
+    @pytest.mark.parametrize('status', [429, 500])
+    def test_9_safe_get_retries_temporary_http(monkeypatch, status):
+        replies = iter([Response({}, status, {'Retry-After': '2'}), Response({})])
+        waits = []
+        monkeypatch.setattr(requests, 'get', lambda *a, **kw: next(replies))
+        monkeypatch.setattr(fetch.time, 'sleep', waits.append)
+        assert fetch.fetch_graph(['acc'], 3, '1', 'x') == ([], {})
+>       assert waits == [2]
+E       assert [] == [2]
+E         
+E         Right contains one more item: 2
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:156: AssertionError
+_________________ test_9_safe_get_retries_temporary_http[500] __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a7ea110>
+status = 500
+
+    @pytest.mark.parametrize('status', [429, 500])
+    def test_9_safe_get_retries_temporary_http(monkeypatch, status):
+        replies = iter([Response({}, status, {'Retry-After': '2'}), Response({})])
+        waits = []
+        monkeypatch.setattr(requests, 'get', lambda *a, **kw: next(replies))
+        monkeypatch.setattr(fetch.time, 'sleep', waits.append)
+        assert fetch.fetch_graph(['acc'], 3, '1', 'x') == ([], {})
+>       assert waits == [2]
+E       assert [] == [2]
+E         
+E         Right contains one more item: 2
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:156: AssertionError
+_____________________ test_9_http_failure_is_bounded[429] ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10afa2f90>
+status = 429
+
+    @pytest.mark.parametrize('status', [429, 500, 400])
+    def test_9_http_failure_is_bounded(monkeypatch, status):
+        calls = []
+        def get(*a, **kw):
+            calls.append(1)
+            return Response({}, status)
+        monkeypatch.setattr(requests, 'get', get)
+        monkeypatch.setattr(fetch.time, 'sleep', lambda seconds: None)
+        records, errors = fetch.fetch_graph(['acc'], 3, '1', 'x')
+>       assert records == [] and 'acc' in errors
+E       AssertionError: assert ([] == []
+E         
+E         Use -v to get more diff and 'acc' in {})
+
+tests/test_fetch_review.py:168: AssertionError
+_____________________ test_9_http_failure_is_bounded[500] ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a802f90>
+status = 500
+
+    @pytest.mark.parametrize('status', [429, 500, 400])
+    def test_9_http_failure_is_bounded(monkeypatch, status):
+        calls = []
+        def get(*a, **kw):
+            calls.append(1)
+            return Response({}, status)
+        monkeypatch.setattr(requests, 'get', get)
+        monkeypatch.setattr(fetch.time, 'sleep', lambda seconds: None)
+        records, errors = fetch.fetch_graph(['acc'], 3, '1', 'x')
+>       assert records == [] and 'acc' in errors
+E       AssertionError: assert ([] == []
+E         
+E         Use -v to get more diff and 'acc' in {})
+
+tests/test_fetch_review.py:168: AssertionError
+_____________________ test_9_http_failure_is_bounded[400] ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b04e310>
+status = 400
+
+    @pytest.mark.parametrize('status', [429, 500, 400])
+    def test_9_http_failure_is_bounded(monkeypatch, status):
+        calls = []
+        def get(*a, **kw):
+            calls.append(1)
+            return Response({}, status)
+        monkeypatch.setattr(requests, 'get', get)
+        monkeypatch.setattr(fetch.time, 'sleep', lambda seconds: None)
+        records, errors = fetch.fetch_graph(['acc'], 3, '1', 'x')
+>       assert records == [] and 'acc' in errors
+E       AssertionError: assert ([] == []
+E         
+E         Use -v to get more diff and 'acc' in {})
+
+tests/test_fetch_review.py:168: AssertionError
+_________________________ test_9_timeout_then_success __________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ae60a50>
+
+    def test_9_timeout_then_success(monkeypatch):
+        calls = []
+        def get(*a, **kw):
+            calls.append(1)
+            if len(calls) == 1:
+                raise requests.Timeout('offline')
+            return Response({})
+        monkeypatch.setattr(requests, 'get', get)
+        monkeypatch.setattr(fetch.time, 'sleep', lambda seconds: None)
+>       assert fetch.fetch_graph(['acc'], 3, '1', 'x') == ([], {})
+E       AssertionError: assert ([], {'acc': ...ен: Timeout'}) == ([], {})
+E         
+E         At index 1 diff: {'acc': 'Instagram недоступен: Timeout'} != {}
+E         Use -v to get more diff
+
+tests/test_fetch_review.py:181: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_9_safe_get_retries_temporary_http[429]
+FAILED tests/test_fetch_review.py::test_9_safe_get_retries_temporary_http[500]
+FAILED tests/test_fetch_review.py::test_9_http_failure_is_bounded[429] - Asse...
+FAILED tests/test_fetch_review.py::test_9_http_failure_is_bounded[500] - Asse...
+FAILED tests/test_fetch_review.py::test_9_http_failure_is_bounded[400] - Asse...
+FAILED tests/test_fetch_review.py::test_9_timeout_then_success - AssertionErr...
+6 failed, 17 deselected in 0.33s
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________________ test_9_retry_after_http_date _________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a810790>
+
+    def test_9_retry_after_http_date(monkeypatch):
+        from email.utils import formatdate
+        now = fetch.time.time()
+        waits = []
+        replies = iter([Response({}, 429, {'Retry-After': formatdate(now + 20, usegmt=True)}), Response({})])
+        monkeypatch.setattr(requests, 'get', lambda *a, **kw: next(replies))
+        monkeypatch.setattr(fetch.time, 'sleep', waits.append)
+        fetch.fetch_graph(['acc'], 3, '1', 'x')
+>       assert 18 <= waits[0] <= 20
+E       assert 18 <= 1
+
+tests/test_fetch_review.py:227: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_9_retry_after_http_date - assert 18 <= 1
+1 failed, 35 deselected in 0.24s

@@ -1,0 +1,50 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_______________ test_1_network_error_never_persists_secret[429] ________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10891ac50>
+con = <sqlite3.Connection object at 0x1089f5d50>, code = 429
+
+    @pytest.mark.parametrize('code', [429, 500])
+    def test_1_network_error_never_persists_secret(monkeypatch, con, code):
+        def fail(*args, **kwargs):
+            raise requests.HTTPError('https://api/?token=synthetic-secret', response=Response({}, code))
+        monkeypatch.setattr(requests, 'post', fail)
+        cfg = config()
+        cfg['instagram']['source'] = 'apify'
+        _, errors = fetch.run_fetch(3, cfg=cfg, env=ENV, con=con)
+        saved = con.execute('SELECT last_error FROM account_status').fetchone()[0]
+>       assert 'synthetic-secret' not in saved
+E       AssertionError: assert 'synthetic-secret' not in 'Instagram н...hetic-secret'
+E         
+E         'synthetic-secret' is contained here:
+E           Instagram недоступен: https://api/?token=synthetic-secret
+E         ?                                          ++++++++++++++++
+
+tests/test_fetch_review.py:41: AssertionError
+_______________ test_1_network_error_never_persists_secret[500] ________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108918c50>
+con = <sqlite3.Connection object at 0x1089f5e40>, code = 500
+
+    @pytest.mark.parametrize('code', [429, 500])
+    def test_1_network_error_never_persists_secret(monkeypatch, con, code):
+        def fail(*args, **kwargs):
+            raise requests.HTTPError('https://api/?token=synthetic-secret', response=Response({}, code))
+        monkeypatch.setattr(requests, 'post', fail)
+        cfg = config()
+        cfg['instagram']['source'] = 'apify'
+        _, errors = fetch.run_fetch(3, cfg=cfg, env=ENV, con=con)
+        saved = con.execute('SELECT last_error FROM account_status').fetchone()[0]
+>       assert 'synthetic-secret' not in saved
+E       AssertionError: assert 'synthetic-secret' not in 'Instagram н...hetic-secret'
+E         
+E         'synthetic-secret' is contained here:
+E           Instagram недоступен: https://api/?token=synthetic-secret
+E         ?                                          ++++++++++++++++
+
+tests/test_fetch_review.py:41: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_fetch_review.py::test_1_network_error_never_persists_secret[429]
+FAILED tests/test_fetch_review.py::test_1_network_error_never_persists_secret[500]
+2 failed in 0.22s

@@ -37,6 +37,9 @@ import common
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = "whisper-large-v3"
 DOWNLOAD_TIMEOUT = 120
+MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
+FFMPEG_TIMEOUT = 120
+FFPROBE_TIMEOUT = 15
 # Лимит Groq на файл — 25 МБ. Минута речи во flac 16 кГц моно весит ~1 МБ,
 # так что для рилсов (обычно до 90 секунд) запас многократный, и резать на
 # куски, как это делает groq-transcribe для часовых митингов, не нужно.
@@ -81,8 +84,11 @@ def clean_transcript(text):
 
 
 def _ffmpeg(args):
-    proc = subprocess.run(["ffmpeg", "-y", "-v", "error", *args],
-                          capture_output=True, text=True)
+    try:
+        proc = subprocess.run(["ffmpeg", "-y", "-v", "error", *args],
+                              capture_output=True, text=True, timeout=FFMPEG_TIMEOUT)
+    except subprocess.TimeoutExpired as exc:
+        raise ReelError("ffmpeg: превышено время обработки") from exc
     if proc.returncode != 0:
         raise ReelError(f"ffmpeg: {proc.stderr[-500:]}")
 
@@ -123,14 +129,28 @@ def candidates(con, cfg, days=7, limit=5, now=None):
 
 
 def download(url, dst):
-    with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT) as resp:
-        if resp.status_code != 200:
-            # Самый частый случай — протухшая ссылка: её уже не воскресить.
-            raise ReelError(f"скачивание не удалось, HTTP {resp.status_code}")
-        with open(dst, "wb") as fh:
-            shutil.copyfileobj(resp.raw, fh)
-    if dst.stat().st_size == 0:
-        raise ReelError("пустой файл")
+    try:
+        with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT) as resp:
+            if resp.status_code != 200:
+                # Самый частый случай — протухшая ссылка: её уже не воскресить.
+                raise ReelError(f"скачивание не удалось, HTTP {resp.status_code}")
+            with open(dst, "wb") as fh:
+                total = 0
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_DOWNLOAD_BYTES:
+                        raise ReelError("видео превышает допустимый размер")
+                    fh.write(chunk)
+        if dst.stat().st_size == 0:
+            raise ReelError("пустой файл")
+    except Exception:
+        try:
+            dst.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def transcribe(video, api_key, language="ru"):
@@ -163,9 +183,13 @@ def grab_frames(video, out_dir, count=6, width=480):
 
 
 def probe_duration(video):
-    proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "csv=p=0", str(video)], capture_output=True, text=True)
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(video)], capture_output=True, text=True,
+            timeout=FFPROBE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return 0.0
     try:
         return float(proc.stdout.strip())
     except ValueError:
@@ -208,6 +232,28 @@ def process(con, cfg, env, days=7, limit=5, frames=0, data_dir=None, keep_days=1
         except (ReelError, requests.RequestException, OSError) as exc:
             # Один мёртвый рилс не повод терять остальные.
             failed.append({**item, "error": str(exc)})
+    # Отчёт строится также из уже сохранённых транскриптов за тот же период.
+    # Они не попадают обратно в candidates и поэтому не скачиваются повторно.
+    now = common.now_utc()
+    floor = now - timedelta(days=days)
+    saved = con.execute(
+        "SELECT p.post_id, p.account, p.caption, p.posted_at, p.permalink, p.transcript,"
+        " (SELECT likes FROM snapshots s WHERE s.post_id=p.post_id"
+        "  ORDER BY s.fetched_at DESC LIMIT 1) AS likes"
+        " FROM posts p WHERE p.media_type='VIDEO' AND p.transcript IS NOT NULL"
+    ).fetchall()
+    medians = {}
+    already_reported = {item["post_id"] for item in done}
+    for row in saved:
+        if row["post_id"] in already_reported or common.parse_ts(row["posted_at"]) < floor:
+            continue
+        account = row["account"]
+        if account not in medians:
+            medians[account] = common.account_medians(con, account, cfg)
+        median = (medians[account] or {}).get("likes")
+        if not median or row["likes"] is None:
+            continue
+        done.append({**dict(row), "ratio": row["likes"] / median, "frames": []})
     if data_dir.exists():
         rotate(data_dir, keep_days=keep_days)
     return done, failed
