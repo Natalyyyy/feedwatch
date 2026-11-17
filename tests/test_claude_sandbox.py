@@ -32,24 +32,23 @@ def _промпт(tmp_path):
     return str(p)
 
 
-def test_набор_инструментов_сужен(monkeypatch, tmp_path):
+def test_вызов_идёт_через_общую_обёртку_с_кодексом(monkeypatch, tmp_path):
     захват = _перехват(monkeypatch, report)
     report.claude_summary({("instagram", "acc"): [{"caption": "текст поста"}]}, _промпт(tmp_path))
-    assert "--tools" in захват["cmd"], "набор инструментов не сужен"
-    assert захват["cmd"][захват["cmd"].index("--tools") + 1] == ""
-
-
-def test_шелл_и_подагенты_запрещены(monkeypatch, tmp_path):
-    захват = _перехват(monkeypatch, report)
-    report.claude_summary({("instagram", "acc"): [{"caption": "текст поста"}]}, _промпт(tmp_path))
-    assert "--disallowedTools" in захват["cmd"]
-    запреты = захват["cmd"][захват["cmd"].index("--disallowedTools") + 1]
-    for имя in ("Bash", "Monitor", "Task", "WebFetch"):
-        assert имя in запреты, имя
+    cmd = захват["cmd"]
+    assert cmd[:2] == ["bash", str(report.Path(report.__file__).resolve().parent / "llm_run.sh")]
+    for option, expected in (("--engine", "codex"), ("--model", "gpt-6-sol"),
+                             ("--effort", "low"), ("--access", "none"),
+                             ("--timeout", "300"), ("--cwd", str(report.Path(report.__file__).resolve().parent))):
+        assert cmd[cmd.index(option) + 1] == expected
+    assert "--tools" not in cmd
+    assert "--disallowedTools" not in cmd
+    assert "текст поста" in захват["input"]
 
 
 def test_токены_не_доезжают_до_модели(monkeypatch, tmp_path):
-    for имя in ("APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY", "TELEGRAM_BOT_TOKEN"):
+    for имя in ("APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY", "TELEGRAM_BOT_TOKEN",
+                "CLAUDE_CODE_OAUTH_TOKEN"):
         monkeypatch.setenv(имя, "живой-" + имя)
     захват = _перехват(monkeypatch, report)
     report.claude_summary({("instagram", "acc"): [{"caption": "текст поста"}]}, _промпт(tmp_path))
@@ -57,5 +56,13 @@ def test_токены_не_доезжают_до_модели(monkeypatch, tmp_p
     if env is None:
         import os
         env = os.environ
-    утекло = [имя for имя in ("APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY", "TELEGRAM_BOT_TOKEN") if имя in env]
+    утекло = [имя for имя in ("APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY",
+                              "TELEGRAM_BOT_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN") if имя in env]
     assert утекло == [], "в окружение модели утекли " + str(утекло)
+
+
+def test_ненулевой_код_обёртки_сбрасывает_ответ(monkeypatch, tmp_path):
+    def failed(cmd, **kw):
+        return types.SimpleNamespace(returncode=124, stdout="частичный ответ", stderr="таймаут")
+    monkeypatch.setattr(report.subprocess, "run", failed)
+    assert report.claude_summary({("instagram", "acc"): [{"caption": "текст"}]}, _промпт(tmp_path)) is None

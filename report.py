@@ -17,11 +17,10 @@ import telegram
 # В окружении прогона лежат ключи, и процесс модели наследовал их все: инъекция
 # из недоверенного текста, дотянувшаяся до исполнения, забирала их одной
 # строкой. Модели они не нужны — сеть за неё делают скрипты.
-# CLAUDE_CODE_OAUTH_TOKEN намеренно НЕ снимаем: им логинится сам CLI.
 _СЕКРЕТЫ_МИМО_МОДЕЛИ = (
     "TELEGRAM_BOT_TOKEN", "TELEGRAM_TOKEN", "TELEGRAPH_TOKEN", "TGSTAT_TOKEN",
     "APIFY_TOKEN", "IG_ACCESS_TOKEN", "GROQ_API_KEY", "HEALTH_BOT_TOKEN",
-    "GCAL_SA", "DASHBOARD_AUTH", "GRANOLA_API_KEY",
+    "GCAL_SA", "DASHBOARD_AUTH", "GRANOLA_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
 )
 
 
@@ -309,7 +308,7 @@ def platform_section(platform, per_account, quiet, unavailable, subs=None):
 
 
 def claude_summary(per_account, prompt_path):
-    """Тематическая выжимка недели через headless Claude. Любой сбой → None."""
+    """Тематическая выжимка недели через Codex. Любой сбой → None."""
     digest = []
     for (platform, account), posts in per_account.items():
         title = "Telegram" if platform == "telegram" else "Instagram"
@@ -317,20 +316,14 @@ def claude_summary(per_account, prompt_path):
         digest.extend("- " + preview(p["caption"], 500) for p in posts)
     prompt = Path(prompt_path).read_text(encoding="utf-8") + "\n\n" + "\n".join(digest)
     try:
+        timeout = 300
+        wrapper = Path(__file__).resolve().parent / "llm_run.sh"
         result = subprocess.run(
-            # Модель прибита явно (27.08.2026). Без флага CLI берёт свой
-            # дефолт, а он разный на разных машинах и меняется с версией: на
-            # Pi он был claude-opus-4-8, на Маке claude-opus-5. Опус, а не
-            # хайку, — потому что де-факто прогон и ехал на опусе, и это
-            # сохранение поведения, а не выбор тарифа заново.
-            ["claude", "-p", "--output-format", "text",
-             "--model", "claude-opus-5",
-             # Набор инструментов пустой: подписи чужих аккаунтов уже в
-             # промпте, файлы модели не нужны (security-ревью 29.08.2026).
-             "--tools", "",
-             "--disallowedTools", "Bash,Monitor,BashOutput,KillShell,Task,Agent,WebFetch,WebSearch,NotebookEdit,Read,Write,Edit"],
+            ["bash", str(wrapper), "--engine", "codex", "--model", "gpt-6-sol",
+             "--effort", "low", "--access", "none", "--timeout", str(timeout),
+             "--cwd", str(Path(__file__).resolve().parent)],
             input=prompt, env=_env_без_секретов(),
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=timeout + 10,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
