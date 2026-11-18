@@ -2,7 +2,7 @@
 # llm_run.sh — headless-вызов модели с выбором движка (shared-utils).
 #
 # Контракт claude_run.sh плюс движок codex. С 02.10.2026 фоновые задания малины
-# ходят в Codex через ChatGPT-аккаунт Наташи (Claude на Пи ушёл в hold 01.10).
+# ходят в Codex через авторизованный ChatGPT-аккаунт (Claude на Пи ушёл в hold 01.10).
 #
 #   echo "$PROMPT" | llm_run.sh --model MODEL [--engine codex|claude] \
 #       [--log FILE] [--out FILE] [--cwd DIR] [--timeout SEC] \
